@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmo Drop • Профиль</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/profile.css') }}">
+</head>
+<body>
+
+<div class="app">
+
+    <!-- HEADER -->
+    <header class="header">
+        <div class="user-info">
+            <div class="avatar">🪐</div>
+            <div class="user-text">
+                <div class="username">Cosmo User</div>
+                <div class="earned">⭐ 120 заработано</div>
+            </div>
+        </div>
+        <div class="balance-box">
+            <div class="plus">＋</div>
+            <div class="balance">⭐ 45</div>
+        </div>
+    </header>
+
+    <!-- CONTENT -->
+    <main class="content">
+
+        <!-- PROFILE CARD -->
+        <section class="profile-card">
+            <div class="profile-avatar">🧑‍🚀</div>
+            <h2>Cosmo User</h2>
+            <p>Игрок космического уровня</p>
+        </section>
+
+        <!-- STATS -->
+        <section class="stats-grid">
+            <div class="stat-card">
+                <span>⭐</span>
+                <p>Звёзды</p>
+                <strong>120</strong>
+            </div>
+            <div class="stat-card">
+                <span>🎁</span>
+                <p>Кейсы</p>
+                <strong>34</strong>
+            </div>
+            <div class="stat-card">
+                <span>🏆</span>
+                <p>Рейтинг</p>
+                <strong>#18</strong>
+            </div>
+        </section>
+        <!-- ACTIONS -->
+        <section class="profile-actions">
+            <button class="action-btn danger">🚪 Выйти</button>
+        </section>
+    </main>
+
+    <!-- BOTTOM BAR -->
+    <nav class="bottom-bar">
+        <a href="{{ url_for('main') }}" class="nav-item">
+            <span>🏠</span>
+            <small>Главная</small>
+        </a>
+        <a href="{{ url_for('cases') }}" class="nav-item">
+            <span>🎁</span>
+            <small>Кейсы</small>
+        </a>
+        <a href="{{ url_for('rating') }}" class="nav-item">
+            <span>🏆</span>
+            <small>Рейтинг</small>
+        </a>
+        <a href="{{ url_for('profile') }}" class="nav-item active">
+            <span>👤</span>
+            <small>Профиль</small>
+        </a>
+    </nav>
+
+</div>
+
+</body>
+</html>

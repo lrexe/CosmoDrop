@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmo Drop</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/cases.css') }}">
+</head>
+<body>
+<div class="app">
+
+    <!-- HEADER -->
+    <header class="header">
+        <div class="user-info">
+            <div class="avatar">🪐</div>
+            <div class="user-text">
+                <div class="username">Cosmo User</div>
+                <div class="earned" id="earned">⭐ 0 заработано</div>
+            </div>
+        </div>
+        <div class="balance-box">
+            <div class="plus">＋</div>
+            <div class="balance" id="balance">⭐ 0</div>
+        </div>
+    </header>
+    <main class="content">
+        <section class="welcome-card">
+            <h2>🎁 Кейсы Cosmo Drop</h2>
+        </section>
+        <section class="space-middle">
+            <div class="stars"></div>
+        </section>
+        <section class="cases-grid">
+            <!-- Кейсы будут подгружаться через JS -->
+        </section>
+        <nav class="bottom-bar">
+            <a href="{{ url_for('main') }}" class="nav-item">
+                <span>🏠</span>
+                <small>Главная</small>
+            </a>
+            <a href="{{ url_for('cases') }}" class="nav-item active">
+                <span>🎁</span>
+                <small>Кейсы</small>
+            </a>
+            <a href="{{ url_for('rating') }}" class="nav-item">
+                <span>🏆</span>
+                <small>Рейтинг</small>
+            </a>
+            <a href="{{ url_for('profile') }}" class="nav-item">
+                <span>👤</span>
+                <small>Профиль</small>
+            </a>
+        </nav>
+    </main>
+</div>
+
+<!-- Модальное окно для открытия кейса -->
+<div class="case-modal hidden" id="caseModal">
+    <div class="roller-container">
+        <div class="roller" id="rollerItems"></div>
+        <div class="pointer">
+            <div class="pointer-line"></div>
+        </div>
+    </div>
+    <div class="result hidden" id="result"></div>
+    <button id="closeModal"
+            style="margin-top:20px;padding:8px 16px;border:none;border-radius:12px;background:#7c3aed;color:#fff;cursor:pointer;">
+        Закрыть
+    </button>
+</div>
+
+<script src="{{ url_for('static', filename='js/cases.js') }}"></script>
+</body>
+</html>

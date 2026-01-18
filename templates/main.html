@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosmo Drop</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+</head>
+<body>
+<div class="app">
+
+    <!-- HEADER -->
+    <header class="header">
+        <div class="user-info">
+            <div class="avatar">🪐</div>
+            <div class="user-text">
+                <div class="username">Cosmo User</div>
+                <div class="earned">⭐ 0 заработано</div>
+            </div>
+        </div>
+        <div class="balance-box">
+            <div class="plus" id="addStarsBtn">＋</div>
+            <div class="balance" id="balance">⭐ 0</div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT -->
+    <main class="content">
+        <!-- ВЕРХ: welcome -->
+        <section class="welcome-card">
+            <h2>✨ Добро пожаловать в Cosmo Drop</h2>
+            <p>Открывай кейсы, собирай звезды и поднимайся в космическом рейтинге</p>
+        </section>
+
+        <!-- СЕРЕДИНА: анимация космоса -->
+        <section class="space-middle">
+            <div class="stars"></div>
+        </section>
+
+        <!-- ВРЕМЕННО: временный warn -->
+
+        <section class="welcome-card">
+            <h2>Это демо-версия бота! ⚡</h2>
+            <p>Бот пока находится на стадии разработки. Полученные подарки 🎁 в демо-периоде пока не выдаются, и мы не
+                сможем отвечать за возможные проблемы. Спасибо за понимание! 😊</p>
+        </section>
+
+        <section class="space-middle">
+            <div class="stars"></div>
+        </section>
+
+        <section>
+            <img src="https://supermeme-space-prd.ams3.cdn.digitaloceanspaces.com/templates/Mr-bean-waiting.png"
+                 alt="ERROR" style="height: 200px; border-radius: 20px">
+        </section>
+        <!-- Секция кейсов -->
+        {#        <section class="cases-grid">#}
+        {##}
+        {#            <div class="case-card">#}
+        {#                <div class="case-label limit">Лимит</div>#}
+        {#                <img src="https://tg-case.ru/others/kartinki/case/BOMZH2.png" alt="Street Case">#}
+        {#                <div class="case-stars">⭐ 5</div>#}
+        {#            </div>#}
+        {##}
+        {#            <div class="case-card">#}
+        {#                <div class="case-label new">Новый</div>#}
+        {#                <img src="https://tg-case.ru/others/kartinki/case/VSEILINICHEGO1.png" alt="Zero Case">#}
+        {#                <div class="case-stars">⭐ 1</div>#}
+        {#            </div>#}
+        {##}
+        {#            <div class="case-card">#}
+        {#                <div class="case-label middle">Обычный</div>#}
+        {#                <img src="https://tg-case.ru/others/kartinki/case/profi1.png" alt="Starter Case">#}
+        {#                <div class="case-stars">⭐ 2</div>#}
+        {#            </div>#}
+        {##}
+        {#            <div class="case-card">#}
+        {#                <div class="case-label new">Новый</div>#}
+        {#                <img src="https://tg-case.ru/others/kartinki/case/KR1YSA1.png" alt="Daily Case">#}
+        {#                <div class="case-stars">⭐ 3</div>#}
+        {#            </div>#}
+        {##}
+        {#            <div class="case-card">#}
+        {#                <div class="case-label middle">Обычный</div>#}
+        {#                <img src="https://tg-case.ru/others/kartinki/case/z9.png" alt="Farm Case">#}
+        {#                <div class="case-stars">⭐ 10</div>#}
+        {#            </div>#}
+        {##}
+        {#            <div class="case-card">#}
+        {#                <div class="case-label rare">Редкий</div>#}
+        {#                <img src="https://tg-case.ru/others/kartinki/case/schoolboy.png" alt="Lucky Case">#}
+        {#                <div class="case-stars">⭐ 25</div>#}
+        {#            </div>#}
+        {##}
+        {#            <div class="case-card">#}
+        {#                <div class="case-label new">Новый</div>#}
+        {#                <img src="https://tg-case.ru/others/kartinki/case/b-day.png" alt="Mystery Case">#}
+        {#                <div class="case-stars">⭐ 7</div>#}
+        {#            </div>#}
+        {##}
+        {#            <div class="case-card">#}
+        {#                <div class="case-label rare">Редкий</div>#}
+        {#                <img src="https://tg-case.ru/others/kartinki/case/%D0%A4%D0%90%D0%A0%D0%9C%20AWM.png" alt="Flex Case">#}
+        {#                <div class="case-stars">⭐ 39</div>#}
+        {#            </div>#}
+        {##}
+        {#            <div class="case-card">#}
+        {#                <div class="case-label epiс">Эпик</div>#}
+        {#                <img src="https://tg-case.ru/others/kartinki/case/lega1.png" alt="Vision Case">#}
+        {#                <div class="case-stars">⭐ 69</div>#}
+        {#            </div>#}
+        {##}
+        {#        </section>#}
+
+
+        <!-- BOTTOM BAR -->
+        <nav class="bottom-bar">
+            <a href="{{ url_for('main') }}" class="nav-item active">
+                <span>🏠</span>
+                <small>Главная</small>
+            </a>
+            <a href="{{ url_for('cases') }}" class="nav-item">
+                <span>🎁</span>
+                <small>Кейсы</small>
+            </a>
+            <a href="{{ url_for('rating') }}" class="nav-item">
+                <span>🏆</span>
+                <small>Рейтинг</small>
+            </a>
+            <a href="{{ url_for('profile') }}" class="nav-item">
+                <span>👤</span>
+                <small>Профиль</small>
+            </a>
+        </nav>
+    </main>
+</div>
+</body>
+</html>
