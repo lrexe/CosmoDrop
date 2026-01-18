@@ -1,2 +1,2 @@
-# CosmoDrop
+# CosmosDrop
 Добро пожаловать в CosmoDrop
