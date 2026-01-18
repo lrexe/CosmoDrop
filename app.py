@@ -9,16 +9,17 @@ app = Flask(__name__)
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = "static/files"
-
-DB_USER = os.getenv('DB_USER', 'postgres')
-DB_PASSWORD = os.getenv('DB_PASSWORD', '02022022')
-DB_HOST = os.getenv('DB_HOST', 'localhost:5432')
-DB_NAME = os.getenv('DB_NAME', 'Cosmos_Drop')
-
-app.config['SQLALCHEMY_DATABASE_URI'] = (
-    f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}'
-)
+#
+# DB_USER = os.getenv('DB_USER', 'postgres')
+# DB_PASSWORD = os.getenv('DB_PASSWORD', '02022022')
+# DB_HOST = os.getenv('DB_HOST', 'localhost:5432')
+# DB_NAME = os.getenv('DB_NAME', 'Cosmos_Drop')
+#
+# app.config['SQLALCHEMY_DATABASE_URI'] = (
+#     f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}'
+# )
 app.config['SECRET_KEY'] = 'xyjfgchdfxjrd'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///Cosmos_Drop.db'
 
 db.init_app(app)
 migrate = Migrate(app, db)
