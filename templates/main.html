@@ -1,138 +1,64 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cosmo Drop</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
-</head>
-<body>
-<div class="app">
+{% extends "base.html" %}
+{% block title %}CosmoDrop — Главная{% endblock %}
 
-    <!-- HEADER -->
-    <header class="header">
-        <div class="user-info">
-            <div class="avatar">🪐</div>
-            <div class="user-text">
-                <div class="username">Cosmo User</div>
-                <div class="earned">⭐ 0 заработано</div>
-            </div>
-        </div>
-        <div class="balance-box">
-            <div class="plus" id="addStarsBtn">＋</div>
-            <div class="balance" id="balance">⭐ 0</div>
-        </div>
-    </header>
+{% block content %}
+<section class="hero-main reveal">
+    <div class="hero-badge">Telegram Gifts · NFT</div>
+    <h1>Лови редкие <span class="grad">подарки</span> Telegram</h1>
+    <p>Открывай кейсы, апгрейди и собирай коллекционные NFT-подарки.</p>
+    <div class="hero-actions">
+        <a href="{{ url_for('cases') }}" class="btn">Открыть кейсы</a>
+        <a href="{{ url_for('games') }}" class="btn ghost">Мини-игры</a>
+    </div>
+    <div class="hero-gifts">
+        <span class="g1">💎</span>
+        <span class="g2">🎁</span>
+        <span class="g3">🧸</span>
+    </div>
+</section>
 
-    <!-- MAIN CONTENT -->
-    <main class="content">
-        <!-- ВЕРХ: welcome -->
-        <section class="welcome-card">
-            <h2>✨ Добро пожаловать в Cosmo Drop</h2>
-            <p>Открывай кейсы, собирай звезды и поднимайся в космическом рейтинге</p>
-        </section>
+<section class="stats-row reveal" id="live-stats">
+    <div class="stat"><div class="val skeleton" style="height:22px">&nbsp;</div><div class="lbl">Кейсов открыто</div></div>
+    <div class="stat"><div class="val skeleton" style="height:22px">&nbsp;</div><div class="lbl">Игроков</div></div>
+    <div class="stat"><div class="val skeleton" style="height:22px">&nbsp;</div><div class="lbl">Рекорд ⭐</div></div>
+</section>
 
-        <!-- СЕРЕДИНА: анимация космоса -->
-        <section class="space-middle">
-            <div class="stars"></div>
-        </section>
+<section class="daily reveal" id="daily-widget">
+    <div class="gift">🎁</div>
+    <div class="d-body">
+        <h4>Ежедневный бонус</h4>
+        <p id="daily-sub">Загрузка…</p>
+    </div>
+    <button class="btn gold sm" id="daily-btn" disabled>…</button>
+</section>
 
-        <!-- ВРЕМЕННО: временный warn -->
-
-        <section class="welcome-card">
-            <h2>Это демо-версия бота! ⚡</h2>
-            <p>Бот пока находится на стадии разработки. Полученные подарки 🎁 в демо-периоде пока не выдаются, и мы не
-                сможем отвечать за возможные проблемы. Спасибо за понимание! 😊</p>
-        </section>
-
-        <section class="space-middle">
-            <div class="stars"></div>
-        </section>
-
-        <section>
-            <img src="https://supermeme-space-prd.ams3.cdn.digitaloceanspaces.com/templates/Mr-bean-waiting.png"
-                 alt="ERROR" style="height: 200px; border-radius: 20px">
-        </section>
-        <!-- Секция кейсов -->
-        {#        <section class="cases-grid">#}
-        {##}
-        {#            <div class="case-card">#}
-        {#                <div class="case-label limit">Лимит</div>#}
-        {#                <img src="https://tg-case.ru/others/kartinki/case/BOMZH2.png" alt="Street Case">#}
-        {#                <div class="case-stars">⭐ 5</div>#}
-        {#            </div>#}
-        {##}
-        {#            <div class="case-card">#}
-        {#                <div class="case-label new">Новый</div>#}
-        {#                <img src="https://tg-case.ru/others/kartinki/case/VSEILINICHEGO1.png" alt="Zero Case">#}
-        {#                <div class="case-stars">⭐ 1</div>#}
-        {#            </div>#}
-        {##}
-        {#            <div class="case-card">#}
-        {#                <div class="case-label middle">Обычный</div>#}
-        {#                <img src="https://tg-case.ru/others/kartinki/case/profi1.png" alt="Starter Case">#}
-        {#                <div class="case-stars">⭐ 2</div>#}
-        {#            </div>#}
-        {##}
-        {#            <div class="case-card">#}
-        {#                <div class="case-label new">Новый</div>#}
-        {#                <img src="https://tg-case.ru/others/kartinki/case/KR1YSA1.png" alt="Daily Case">#}
-        {#                <div class="case-stars">⭐ 3</div>#}
-        {#            </div>#}
-        {##}
-        {#            <div class="case-card">#}
-        {#                <div class="case-label middle">Обычный</div>#}
-        {#                <img src="https://tg-case.ru/others/kartinki/case/z9.png" alt="Farm Case">#}
-        {#                <div class="case-stars">⭐ 10</div>#}
-        {#            </div>#}
-        {##}
-        {#            <div class="case-card">#}
-        {#                <div class="case-label rare">Редкий</div>#}
-        {#                <img src="https://tg-case.ru/others/kartinki/case/schoolboy.png" alt="Lucky Case">#}
-        {#                <div class="case-stars">⭐ 25</div>#}
-        {#            </div>#}
-        {##}
-        {#            <div class="case-card">#}
-        {#                <div class="case-label new">Новый</div>#}
-        {#                <img src="https://tg-case.ru/others/kartinki/case/b-day.png" alt="Mystery Case">#}
-        {#                <div class="case-stars">⭐ 7</div>#}
-        {#            </div>#}
-        {##}
-        {#            <div class="case-card">#}
-        {#                <div class="case-label rare">Редкий</div>#}
-        {#                <img src="https://tg-case.ru/others/kartinki/case/%D0%A4%D0%90%D0%A0%D0%9C%20AWM.png" alt="Flex Case">#}
-        {#                <div class="case-stars">⭐ 39</div>#}
-        {#            </div>#}
-        {##}
-        {#            <div class="case-card">#}
-        {#                <div class="case-label epiс">Эпик</div>#}
-        {#                <img src="https://tg-case.ru/others/kartinki/case/lega1.png" alt="Vision Case">#}
-        {#                <div class="case-stars">⭐ 69</div>#}
-        {#            </div>#}
-        {##}
-        {#        </section>#}
-
-
-        <!-- BOTTOM BAR -->
-        <nav class="bottom-bar">
-            <a href="{{ url_for('main') }}" class="nav-item active">
-                <span>🏠</span>
-                <small>Главная</small>
-            </a>
-            <a href="{{ url_for('cases') }}" class="nav-item">
-                <span>🎁</span>
-                <small>Кейсы</small>
-            </a>
-            <a href="{{ url_for('rating') }}" class="nav-item">
-                <span>🏆</span>
-                <small>Рейтинг</small>
-            </a>
-            <a href="{{ url_for('profile') }}" class="nav-item">
-                <span>👤</span>
-                <small>Профиль</small>
-            </a>
-        </nav>
-    </main>
+<div class="section-head reveal">
+    <h3>Ежедневные задания</h3>
 </div>
-</body>
-</html>
+<section class="feed reveal" id="quests-list">
+    <div class="quest skeleton" style="height:58px"></div>
+    <div class="quest skeleton" style="height:58px"></div>
+</section>
+
+<div class="section-head reveal">
+    <h3>Популярные кейсы</h3>
+    <a class="link" href="{{ url_for('cases') }}">Все →</a>
+</div>
+<section class="cases-grid reveal" id="featured-cases">
+    <div class="case-card skeleton" style="height:160px"></div>
+    <div class="case-card skeleton" style="height:160px"></div>
+</section>
+
+<div class="section-head reveal">
+    <h3>Последние выигрыши</h3>
+</div>
+<section class="feed reveal" id="win-feed">
+    <div class="feed-item skeleton" style="height:46px"></div>
+    <div class="feed-item skeleton" style="height:46px"></div>
+    <div class="feed-item skeleton" style="height:46px"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/home.js') }}"></script>
+{% endblock %}

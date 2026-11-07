@@ -1,0 +1,8 @@
+# Веб-приложение CosmoDrop (Flask + SQLite)
+Flask==3.1.2
+Flask-SQLAlchemy==3.1.1
+Flask-Migrate==4.1.0
+
+# --- для Telegram-бота (bot/bot.py), для веб-сайта не требуются ---
+# aiogram==3.22.0
+# psycopg2==2.9.11   # только если используете PostgreSQL вместо SQLite

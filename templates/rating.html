@@ -1,96 +1,24 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cosmo Drop — Рейтинг</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/rating.css') }}">
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}CosmoDrop — Рейтинг{% endblock %}
 
-<div class="rating-app">
+{% block content %}
+<section class="page-head reveal">
+    <h1>Рейтинг игроков</h1>
+    <p>Лучшие коллекционеры по суммарному выигрышу.</p>
+</section>
 
-    <header class="header">
-        <div class="user-info">
-            <div class="avatar">🪐</div>
-            <div class="user-text">
-                <div class="username">Cosmo User</div>
-                <div class="earned">⭐ 120 заработано</div>
-            </div>
-        </div>
-        <div class="balance-box">
-            <div class="plus">＋</div>
-            <div class="balance">⭐ 45</div>
-        </div>
-    </header>
-    <main class="rating-content">
-        <section class="welcome-card">
-            <h2>📈 Рейтинг Cosmo Drop</h2>
-        </section>
-        <section class="space-middle">
-            <div class="stars"></div>
-        </section>
-        <div class="rating-list">
+<section class="reveal" id="podium-wrap"></section>
 
-            <div class="rating-item top1">
-                <span class="place">1</span>
-                <span class="name">LREXE</span>
-                <span class="score">⭐ 1240</span>
-            </div>
+<div class="section-head reveal"><h3>Таблица лидеров</h3></div>
+<section class="rating-list reveal" id="rating-list">
+    <div class="rating-item skeleton" style="height:44px"></div>
+    <div class="rating-item skeleton" style="height:44px"></div>
+    <div class="rating-item skeleton" style="height:44px"></div>
+</section>
 
-            <div class="rating-item top2">
-                <span class="place">2</span>
-                <span class="name">licexsy</span>
-                <span class="score">⭐ 980</span>
-            </div>
+<section class="reveal" id="me-card" style="position:sticky;bottom:calc(var(--nav-h) + 8px);margin-top:4px"></section>
+{% endblock %}
 
-            <div class="rating-item top3">
-                <span class="place">3</span>
-                <span class="name">Nebula</span>
-                <span class="score">⭐ 860</span>
-            </div>
-
-            <div class="rating-item">
-                <span class="place">4</span>
-                <span class="name">GalaxyX</span>
-                <span class="score">⭐ 640</span>
-            </div>
-
-            <div class="rating-item">
-                <span class="place">5</span>
-                <span class="name">AstroBoy</span>
-                <span class="score">⭐ 510</span>
-            </div>
-
-            <div class="rating-item">
-                <span class="place">6</span>
-                <span class="name">Nova</span>
-                <span class="score">⭐ 430</span>
-            </div>
-
-        </div>
-
-    </main>
-
-    <!-- Нижний бар (тот же HTML, стили не конфликтуют) -->
-    <nav class="bottom-bar">
-        <a href="{{ url_for('main') }}" class="nav-item">
-            <span>🏠</span>
-            <small>Главная</small>
-        </a>
-        <a href="{{ url_for('cases') }}" class="nav-item">
-            <span>🎁</span>
-            <small>Кейсы</small>
-        </a>
-        <a href="{{ url_for('rating') }}" class="nav-item active">
-            <span>🏆</span>
-            <small>Рейтинг</small>
-        </a>
-        <a href="{{ url_for('profile') }}" class="nav-item">
-            <span>👤</span>
-            <small>Профиль</small>
-        </a>
-    </nav>
-</div>
-</body>
-</html>
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/rating.js') }}"></script>
+{% endblock %}

@@ -1,85 +1,86 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cosmo Drop • Профиль</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/profile.css') }}">
-</head>
-<body>
+{% extends "base.html" %}
+{% block title %}CosmoDrop — Профиль{% endblock %}
 
-<div class="app">
+{% block content %}
+<section class="profile-hero reveal">
+    <div class="p-avatar" data-avatar>🧑‍🚀</div>
+    <h2 data-username>Космонавт</h2>
+    <div class="p-tag" id="rank-tag">Место в рейтинге: …</div>
+</section>
 
-    <!-- HEADER -->
-    <header class="header">
-        <div class="user-info">
-            <div class="avatar">🪐</div>
-            <div class="user-text">
-                <div class="username">Cosmo User</div>
-                <div class="earned">⭐ 120 заработано</div>
-            </div>
-        </div>
-        <div class="balance-box">
-            <div class="plus">＋</div>
-            <div class="balance">⭐ 45</div>
-        </div>
-    </header>
+<section class="card level-card reveal" id="level-card">
+    <div class="level-top">
+        <span class="lt-lvl" id="lt-lvl">Уровень 1</span>
+        <span class="lt-xp" id="lt-xp">0 / 100 XP</span>
+    </div>
+    <div class="level-bar"><div class="level-fill" id="lt-fill" style="width:0%"></div></div>
+</section>
 
-    <!-- CONTENT -->
-    <main class="content">
+<section class="pstats reveal" id="pstats">
+    <div class="pstat"><span class="ps-ic">⭐</span><div><div class="ps-val" id="ps-balance">0</div><div class="ps-lbl">Баланс</div></div></div>
+    <div class="pstat"><span class="ps-ic">🎁</span><div><div class="ps-val" id="ps-cases">0</div><div class="ps-lbl">Открыто кейсов</div></div></div>
+    <div class="pstat"><span class="ps-ic">📈</span><div><div class="ps-val" id="ps-earned">0</div><div class="ps-lbl">Всего выиграно</div></div></div>
+    <div class="pstat"><span class="ps-ic">💎</span><div><div class="ps-val" id="ps-best">0</div><div class="ps-lbl">Лучший дроп</div></div></div>
+</section>
 
-        <!-- PROFILE CARD -->
-        <section class="profile-card">
-            <div class="profile-avatar">🧑‍🚀</div>
-            <h2>Cosmo User</h2>
-            <p>Игрок космического уровня</p>
-        </section>
+<section class="reveal">
+    <button class="btn gold block" data-topup>⭐ Пополнить баланс</button>
+</section>
 
-        <!-- STATS -->
-        <section class="stats-grid">
-            <div class="stat-card">
-                <span>⭐</span>
-                <p>Звёзды</p>
-                <strong>120</strong>
-            </div>
-            <div class="stat-card">
-                <span>🎁</span>
-                <p>Кейсы</p>
-                <strong>34</strong>
-            </div>
-            <div class="stat-card">
-                <span>🏆</span>
-                <p>Рейтинг</p>
-                <strong>#18</strong>
-            </div>
-        </section>
-        <!-- ACTIONS -->
-        <section class="profile-actions">
-            <button class="action-btn danger">🚪 Выйти</button>
-        </section>
-    </main>
-
-    <!-- BOTTOM BAR -->
-    <nav class="bottom-bar">
-        <a href="{{ url_for('main') }}" class="nav-item">
-            <span>🏠</span>
-            <small>Главная</small>
-        </a>
-        <a href="{{ url_for('cases') }}" class="nav-item">
-            <span>🎁</span>
-            <small>Кейсы</small>
-        </a>
-        <a href="{{ url_for('rating') }}" class="nav-item">
-            <span>🏆</span>
-            <small>Рейтинг</small>
-        </a>
-        <a href="{{ url_for('profile') }}" class="nav-item active">
-            <span>👤</span>
-            <small>Профиль</small>
-        </a>
-    </nav>
-
+<div class="section-head reveal">
+    <h3>Инвентарь <span id="inv-count" style="color:var(--muted);font-weight:600"></span></h3>
+    <span class="link" id="sell-all" style="display:none">Продать всё →</span>
 </div>
+<section class="inv-grid reveal" id="inv-grid">
+    <div class="inv-item skeleton" style="height:96px"></div>
+    <div class="inv-item skeleton" style="height:96px"></div>
+    <div class="inv-item skeleton" style="height:96px"></div>
+</section>
 
-</body>
-</html>
+<div class="section-head reveal"><h3>Достижения</h3></div>
+<section class="ach-grid reveal" id="ach-grid">
+    <div class="ach skeleton" style="height:70px"></div>
+    <div class="ach skeleton" style="height:70px"></div>
+</section>
+
+<div class="section-head reveal"><h3>Промокод</h3></div>
+<section class="reveal">
+    <div class="inline-form">
+        <input id="promo-input" placeholder="Введи код" maxlength="32">
+        <button class="btn" id="promo-btn">Активировать</button>
+    </div>
+    <div class="game-hint" style="margin-top:6px;text-align:left">Попробуй: <b>COSMO100</b>, <b>WELCOME</b>, <b>STARGIFT</b></div>
+</section>
+
+<div class="section-head reveal"><h3>Пригласи друзей</h3></div>
+<section class="card reveal" id="referral-card">
+    <div class="ref-code">
+        <div><div class="game-hint" style="text-align:left">Твой реферальный код</div>
+            <div class="rc-val" id="ref-code">…</div></div>
+        <button class="btn sm ghost" id="ref-copy">Копировать</button>
+    </div>
+    <div class="ref-stats">
+        <div class="rs"><b id="ref-invited">0</b><span>приглашено</span></div>
+        <div class="rs"><b id="ref-earned">0</b><span>заработано ⭐</span></div>
+    </div>
+    <div class="game-hint" style="margin-top:8px;text-align:left">За каждого друга: ты +200 ⭐, друг +100 ⭐.</div>
+</section>
+
+<div class="section-head reveal"><h3>Настройки</h3></div>
+<section class="card reveal">
+    <div class="setting-row">
+        <span class="sr-label">🔊 Звуковые эффекты</span>
+        <div class="switch" id="sound-switch"></div>
+    </div>
+</section>
+
+<div class="section-head reveal"><h3>История открытий</h3></div>
+<section class="feed reveal" id="history-list">
+    <div class="feed-item skeleton" style="height:46px"></div>
+    <div class="feed-item skeleton" style="height:46px"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/profile.js') }}"></script>
+{% endblock %}
