@@ -103,6 +103,24 @@
     try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred(type); } catch (e) {}
   }
 
+  // ---- иконка подарка: <img> с авто-фолбэком на эмодзи, если файла нет ----
+  function gift(obj, extraClass = "") {
+    const emoji = (obj && obj.emoji) || "🎁";
+    const img = obj && obj.image;
+    if (img) {
+      const name = ((obj && obj.name) || "").replace(/"/g, "");
+      return `<img class="gift-img ${extraClass}" src="${img}" alt="${name}" loading="lazy" data-emoji="${emoji}" onerror="CD.imgFallback(this)">`;
+    }
+    return `<span class="gift-emoji ${extraClass}">${emoji}</span>`;
+  }
+  function imgFallback(el) {
+    const emoji = el.getAttribute("data-emoji") || "🎁";
+    const span = document.createElement("span");
+    span.className = ("gift-emoji " + el.className.replace("gift-img", "")).trim();
+    span.textContent = emoji;
+    el.replaceWith(span);
+  }
+
   // ---- header --------------------------------------------------------------
   function renderHeader(u) {
     if (!u) return;
@@ -267,7 +285,9 @@
           <button class="btn gold block" id="topup-confirm">Пополнить</button>
         </div>`;
       document.body.appendChild(modal);
-      modal.addEventListener("click", (e) => { if (e.target === modal || e.target.dataset.close !== undefined) close(); });
+      modal.querySelectorAll("[data-close]").forEach((b) =>
+        b.addEventListener("click", (e) => { e.stopPropagation(); close(); }));
+      modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
       modal.querySelectorAll(".topup-preset").forEach((b) =>
         b.addEventListener("click", () => (modal.querySelector("#topup-input").value = b.dataset.amt)));
       modal.querySelector("#topup-confirm").addEventListener("click", async () => {
@@ -319,7 +339,7 @@
   window.CD = {
     API, RARITY, identity,
     onUser, setUser, patchBalance, refreshUser: async () => { try { setUser(await API.me()); } catch (e) {} },
-    toast, confetti, countUp, fmt, haptic, topUpModal, sound,
+    toast, confetti, countUp, fmt, haptic, topUpModal, sound, gift, imgFallback,
     get user() { return currentUser; },
   };
 

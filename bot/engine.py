@@ -7,16 +7,16 @@ import random
 import string
 from datetime import datetime
 
-from models import db, DailyProgress
+from models import db, DailyProgress, gift_image
 
 RARITY_RANK = {"common": 0, "rare": 1, "epic": 2, "legendary": 3}
 
-# пулы подарков по редкости (тематика Telegram Gifts / NFT) — для апгрейда/контрактов
+# пулы подарков по редкости (реальные Telegram Gifts / NFT) — для апгрейда/контрактов
 ITEM_POOLS = {
-    "common":    [("Мишка", "🧸"), ("Сердечко", "💝"), ("Роза", "🌹")],
-    "rare":      [("Подарок", "🎁"), ("Ракета", "🚀"), ("Букет", "💐"), ("Шампанское", "🍾")],
-    "epic":      [("Торт", "🎂"), ("Кубок", "🏆"), ("Кольцо", "💍"), ("Персик", "🍑")],
-    "legendary": [("Бриллиант", "💎"), ("Кепка Дурова", "🎩"), ("Плюш Пепе", "🐸"), ("Золотой слиток", "🥇")],
+    "common":    [("Носки Пепе", "🧦"), ("Леденец", "🍭"), ("Пряник", "🍪")],
+    "rare":      [("Плюш-сердце", "💝"), ("Напуганный кот", "🐱"), ("Коробка ягод", "🍓"), ("Колпак шута", "🤡")],
+    "epic":      [("Перстень", "💍"), ("Вуду-кукла", "🧿"), ("Куб-мозг", "🧠"), ("Золотые туфли", "👠")],
+    "legendary": [("Кепка Дурова", "🎩"), ("Астральный кристалл", "💎")],
 }
 
 
@@ -35,7 +35,8 @@ def generate_item(value):
     value = max(1, int(value))
     rarity = rarity_for_value(value)
     name, emoji = random.choice(ITEM_POOLS[rarity])
-    return {"name": name, "emoji": emoji, "stars": value, "rarity": rarity}
+    return {"name": name, "emoji": emoji, "image": gift_image(emoji),
+            "stars": value, "rarity": rarity}
 
 
 # ---------------------------------------------------------------- уровни / XP

@@ -95,7 +95,7 @@
         CD.sound.play(data.result.rarity === "legendary" ? "jackpot" : "win");
         CD.confetti(data.result.rarity === "legendary" ? 120 : 70);
         showGameResult("win", data.result.emoji, `Апгрейд удался!`,
-          `${data.result.name} · ⭐ ${fmt(data.result.stars)} · ${rarLabel(data.result.rarity)}`, data.result.rarity);
+          `${data.result.name} · ⭐ ${fmt(data.result.stars)} · ${rarLabel(data.result.rarity)}`, data.result.rarity, data.result);
       } else {
         CD.sound.play("lose"); CD.haptic("heavy");
         showGameResult("lose", "💥", "Предмет сгорел", "В этот раз не повезло — попробуй ещё", "common");
@@ -149,7 +149,7 @@
     showGameResult(win ? "win" : "lose", data.result.emoji,
       `${data.result.name} · ⭐ ${fmt(data.result.stars)}`,
       `Вложено ⭐ ${fmt(data.input_value)} → получено ⭐ ${fmt(data.output_value)} (${data.profit >= 0 ? "+" : ""}${fmt(data.profit)})`,
-      data.result.rarity);
+      data.result.rarity, data.result);
     CD.patchBalance(data.new_balance);
     conSel.clear(); busy = false; CD.refreshUser();
   }
@@ -246,7 +246,7 @@
     }
     host.innerHTML = inventory.map((i) => `
       <div class="inv-item ${isSel(i) ? "sel" : ""}" data-pick="${i.id}" style="--rc:var(--r-${i.rarity})">
-        <div class="iv-emoji">${i.emoji}</div>
+        <div class="iv-emoji">${CD.gift(i)}</div>
         <div class="iv-name">${i.name}</div>
         <div class="iv-stars">⭐ ${fmt(i.stars)}</div>
       </div>`).join("");
@@ -254,22 +254,26 @@
       el.addEventListener("click", () => onToggle(+el.dataset.pick)));
   }
 
-  function showGameResult(cls, emoji, title, sub, rarity) {
+  function showGameResult(cls, emoji, title, sub, rarity, obj) {
+    const icon = obj ? CD.gift(obj) : emoji;
     const card = document.createElement("div");
     card.className = "modal";
     card.innerHTML = `
       <div class="modal-card" style="max-width:360px;position:relative">
-        <button class="modal-close" data-close>×</button>
+        <button class="modal-close" data-close type="button">×</button>
         <div class="game-result ${cls}" style="--glow:var(--r-${rarity || "common"})">
-          <div class="gr-emoji">${emoji}</div>
+          <div class="gr-emoji">${icon}</div>
           <div class="gr-title">${title}</div>
           <div class="gr-sub">${sub}</div>
         </div>
-        <button class="btn block" style="margin-top:14px" data-close>Продолжить</button>
+        <button class="btn block" style="margin-top:14px" data-close type="button">Продолжить</button>
       </div>`;
     document.body.appendChild(card);
-    const close = () => { card.remove(); render(); };
-    card.addEventListener("click", (e) => { if (e.target === card || e.target.dataset.close !== undefined) close(); });
+    let closed = false;
+    const close = () => { if (closed) return; closed = true; card.remove(); render(); };
+    card.querySelectorAll("[data-close]").forEach((b) =>
+      b.addEventListener("click", (e) => { e.stopPropagation(); close(); }));
+    card.addEventListener("click", (e) => { if (e.target === card) close(); });
   }
 
   render();

@@ -74,30 +74,29 @@ body {
 .app {
     position: relative; z-index: 1;
     width: 100%; max-width: var(--maxw);
-    min-height: 100dvh;
+    height: 100dvh;
     margin: 0 auto;
     display: flex; flex-direction: column;
-    padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
+    overflow: hidden;
 }
 @media (min-width: 520px) {
     .app {
-        min-height: calc(100dvh - 32px);
+        height: calc(100dvh - 32px);
         margin: 16px auto;
         border: 1px solid var(--stroke);
         border-radius: 28px;
-        box-shadow: var(--shadow), 0 0 80px rgba(124, 58, 237, 0.15);
-        overflow: hidden;
-        backdrop-filter: blur(2px);
+        box-shadow: var(--shadow), 0 0 80px rgba(51, 144, 236, 0.10);
     }
 }
 
 /* ---------- HEADER ---------- */
 .header {
-    position: sticky; top: 0; z-index: 50;
+    position: relative; z-index: 50;
+    flex: 0 0 auto;
     display: flex; align-items: center; justify-content: space-between;
     gap: 12px;
     padding: 12px 16px;
-    background: linear-gradient(180deg, rgba(8, 10, 28, 0.92), rgba(8, 10, 28, 0.55));
+    background: linear-gradient(180deg, rgba(12, 17, 24, 0.92), rgba(12, 17, 24, 0.55));
     backdrop-filter: blur(14px);
     border-bottom: 1px solid var(--stroke);
 }
@@ -137,10 +136,23 @@ body {
 
 /* ---------- CONTENT ---------- */
 .content {
-    flex: 1;
+    flex: 1 1 auto; min-height: 0;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
     display: flex; flex-direction: column; gap: 16px;
-    padding: 18px 16px 8px;
+    padding: 18px 16px 22px;
+    overscroll-behavior: contain;
 }
+
+/* дети контента не должны сжиматься — иначе flex-колонка обрезает высокие блоки */
+.content > * { flex-shrink: 0; }
+
+/* скрытый скролл (app-shell, пикеры, списки) — прокрутка остаётся */
+.content, .picker, .drop-list, .roller-wrap, .modal-card { scrollbar-width: none; -ms-overflow-style: none; }
+.content::-webkit-scrollbar,
+.picker::-webkit-scrollbar,
+.drop-list::-webkit-scrollbar,
+.roller-wrap::-webkit-scrollbar,
+.modal-card::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
 /* заголовки секций */
 .section-head {
@@ -213,7 +225,7 @@ body {
 .hero-main p { position: relative; z-index: 2; font-size: 13.5px; color: #c3cedb; margin-top: 11px; max-width: 265px; }
 .hero-actions { position: relative; z-index: 2; display: flex; gap: 10px; margin-top: 20px; }
 .hero-gifts { position: absolute; right: 8px; top: 0; bottom: 0; width: 140px; pointer-events: none; z-index: 1; }
-.hero-gifts span { position: absolute; filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.45)); }
+.hero-gifts span, .hero-gifts img { position: absolute; filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.45)); }
 .hero-gifts .g1 { font-size: 72px; right: 6px; top: 50%; transform: translateY(-50%); animation: floaty 4.5s ease-in-out infinite; }
 .hero-gifts .g2 { font-size: 38px; right: 92px; top: 20%; opacity: 0.9; animation: floaty 5.5s ease-in-out infinite 0.4s; }
 .hero-gifts .g3 { font-size: 32px; right: 78px; bottom: 16%; opacity: 0.85; animation: floaty 5s ease-in-out infinite 0.8s; }
@@ -286,7 +298,7 @@ body {
 .feed-item .fi-name { font-size: 13px; font-weight: 600;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .feed-item .fi-sub { font-size: 11px; color: var(--muted); }
-.feed-item .fi-win { font-weight: 800; font-size: 13px; }
+.feed-item .fi-win { font-weight: 800; font-size: 13px; white-space: nowrap; }
 
 /* ---------- сетка кейсов ---------- */
 .cases-grid {
@@ -514,17 +526,14 @@ body {
 
 /* ---------- bottom nav ---------- */
 .bottom-bar {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
-    width: 100%; max-width: var(--maxw); margin: 0 auto;
+    flex: 0 0 auto; z-index: 60;
+    width: 100%;
     height: var(--nav-h);
     display: flex; justify-content: space-around; align-items: center;
     padding-bottom: env(safe-area-inset-bottom, 0px);
-    background: linear-gradient(0deg, rgba(8, 10, 28, 0.96), rgba(8, 10, 28, 0.75));
+    background: linear-gradient(0deg, rgba(12, 17, 24, 0.97), rgba(12, 17, 24, 0.82));
     backdrop-filter: blur(16px);
     border-top: 1px solid var(--stroke);
-}
-@media (min-width: 520px) {
-    .bottom-bar { border-radius: 0 0 28px 28px; bottom: 16px; border: 1px solid var(--stroke); border-top: 1px solid var(--stroke); }
 }
 .nav-item {
     display: flex; flex-direction: column; align-items: center; gap: 3px;
@@ -574,6 +583,10 @@ body {
 .empty .e-emoji { font-size: 34px; display: block; margin-bottom: 8px; opacity: 0.7; }
 .hidden { display: none !important; }
 .center { text-align: center; }
+
+/* иконка подарка (img масштабируется под размер эмодзи-контейнера) */
+.gift-img { width: 1em; height: 1em; object-fit: cover; border-radius: 22%; display: inline-block; vertical-align: middle; }
+.gift-emoji { display: inline-block; line-height: 1; }
 
 /* конфетти */
 .confetti {

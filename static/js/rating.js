@@ -61,9 +61,10 @@
 
   function renderMe(leaderboard, me) {
     const box = document.getElementById("me-card");
-    if (!me) { box.innerHTML = ""; return; }
+    // показываем отдельную карточку «ты», только если игрок НЕ попал в видимый топ
+    if (!me || me.place <= leaderboard.length) { box.innerHTML = ""; return; }
     box.innerHTML = `
-      <div class="rating-item me" style="box-shadow:0 0 0 1px var(--violet) inset, 0 10px 30px rgba(0,0,0,.5)">
+      <div class="rating-item me">
         <span class="place">${me.place}</span>
         <span class="ri-av">${me.avatar || "🧑‍🚀"}</span>
         <span class="name">Ты · ${me.name}</span>

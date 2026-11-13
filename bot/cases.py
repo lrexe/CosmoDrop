@@ -10,7 +10,7 @@ import random
 from datetime import datetime, timedelta
 
 from flask import Blueprint, jsonify, request
-from models import db, User, Case, CasePrize, InventoryItem, CaseHistory
+from models import db, User, Case, CasePrize, InventoryItem, CaseHistory, gift_image
 from bot.engine import (
     award_xp, bump_daily, gen_referral_code, level_info, RARITY_RANK,
 )
@@ -213,7 +213,7 @@ def open_case_api():
     roller = []
     for i in range(80):
         p = prize if i == CENTER_INDEX else random.choice(pool)
-        roller.append({"stars": p.stars, "emoji": p.emoji,
+        roller.append({"stars": p.stars, "emoji": p.emoji, "image": gift_image(p.emoji),
                        "name": p.name, "rarity": p.rarity})
 
     db.session.commit()
@@ -221,7 +221,7 @@ def open_case_api():
     net = prize.stars - case.price
     return jsonify({
         "win": {
-            "name": prize.name, "emoji": prize.emoji,
+            "name": prize.name, "emoji": prize.emoji, "image": gift_image(prize.emoji),
             "stars": prize.stars, "rarity": prize.rarity,
         },
         "net": net,

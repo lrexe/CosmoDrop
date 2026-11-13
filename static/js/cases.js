@@ -28,7 +28,7 @@
     return `
       <div class="case-card rarity-ring-${r}" data-case="${c.id}">
         <span class="rarity-badge r-${r}">${rarLabel(r)}</span>
-        <div class="c-emoji">${c.emoji || "🎁"}</div>
+        <div class="c-emoji">${CD.gift(c)}</div>
         <div class="c-name">${c.name}</div>
         <div class="c-range">⭐ ${fmt(c.prize_min)}–${fmt(c.prize_max)}</div>
         <div class="c-price">⭐ ${fmt(c.price)}</div>
@@ -49,7 +49,7 @@
     body.innerHTML = `
       <button class="modal-close" data-close>×</button>
       <div class="center" style="margin-bottom:6px">
-        <div style="font-size:60px;filter:drop-shadow(0 8px 20px rgba(0,0,0,.4))">${c.emoji || "🎁"}</div>
+        <div style="font-size:60px;filter:drop-shadow(0 8px 20px rgba(0,0,0,.4))">${CD.gift(c)}</div>
         <h3 style="margin-top:6px">${c.name}</h3>
         <p class="m-sub">${c.description || ""}</p>
       </div>
@@ -69,7 +69,7 @@
   function dropRow(p) {
     return `
       <div class="drop-row" style="--rc:var(--r-${p.rarity})">
-        <span class="d-emoji">${p.emoji}</span>
+        <span class="d-emoji">${CD.gift(p)}</span>
         <span class="d-name">${p.name}</span>
         <span class="d-stars">⭐ ${fmt(p.stars)}</span>
         <span class="d-chance">${p.chance}%</span>
@@ -97,7 +97,7 @@
     const roller = body.querySelector("#roller");
     roller.innerHTML = data.roller.map((p) => `
       <div class="roller-item" style="--rc:var(--r-${p.rarity})">
-        <span class="ri-emoji">${p.emoji}</span>
+        <span class="ri-emoji">${CD.gift(p)}</span>
         <span class="ri-stars">⭐ ${fmt(p.stars)}</span>
       </div>`).join("");
 
@@ -151,7 +151,7 @@
     body.innerHTML = `
       <button class="modal-close" data-close>×</button>
       <div class="win-card" style="--glow:var(--r-${w.rarity})">
-        <div class="w-emoji">${w.emoji}</div>
+        <div class="w-emoji">${CD.gift(w)}</div>
         <div class="w-name">${w.name}</div>
         <div class="w-stars">⭐ ${fmt(w.stars)} · ${rarLabel(w.rarity)}</div>
         <div class="w-net ${netCls}">${netTxt}</div>
@@ -197,7 +197,7 @@
       if (!rows.length) return;
       const sec = document.getElementById("drops-ticker");
       const track = document.getElementById("drops-track");
-      const chip = (r) => `<div class="tick-item">${r.avatar || "🧑‍🚀"} ${r.username || "Игрок"}: <b style="color:var(--${rarColorVar(r.prize_rarity)})">${r.prize_name}</b> ⭐${fmt(r.prize_stars)}</div>`;
+      const chip = (r) => `<div class="tick-item">${r.avatar || "🧑‍🚀"} ${r.username || "Игрок"}: <b style="color:var(--${rarColorVar(r.prize_rarity)})">${r.prize_name}</b> +${fmt(r.prize_stars)} ⭐</div>`;
       track.innerHTML = rows.map(chip).join("") + rows.map(chip).join(""); // дублируем для бесшовной прокрутки
       sec.style.display = "";
     }).catch(() => {});

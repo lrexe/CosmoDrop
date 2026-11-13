@@ -128,7 +128,7 @@
   function invItem(i) {
     return `
       <div class="inv-item" style="--rc:var(--r-${i.rarity})" title="${rarLabel(i.rarity)} · из «${i.case_name}»">
-        <div class="iv-emoji">${i.emoji}</div>
+        <div class="iv-emoji">${CD.gift(i)}</div>
         <div class="iv-name">${i.name}</div>
         <div class="iv-stars">⭐ ${fmt(i.stars)}</div>
         <div class="iv-sell" data-sell="${i.id}">Продать</div>
@@ -160,7 +160,7 @@
             <div class="fi-name">${r.prize_name}</div>
             <div class="fi-sub">${r.case_name} · ${timeAgo(r.opened_at)}</div>
           </div>
-          <div class="fi-win" style="color:var(--${rarColor(r.prize_rarity)})">⭐ ${fmt(r.prize_stars)}</div>
+          <div class="fi-win" style="color:var(--${rarColor(r.prize_rarity)})">+${fmt(r.prize_stars)} ⭐</div>
         </div>`).join("");
     }).catch(() => {});
   }

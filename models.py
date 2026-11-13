@@ -3,6 +3,22 @@ from datetime import datetime
 
 db = SQLAlchemy()
 
+# ---------------------------------------------------------------------------
+# Картинки подарков: эмодзи -> файл в static/img/gifts/<slug>.png
+# Если файла нет на диске, фронтенд автоматически откатится на эмодзи.
+# ---------------------------------------------------------------------------
+GIFT_SLUGS = {
+    "🧦": "pepe-socks", "🍭": "lollipop", "🍪": "ginger-cookie", "💝": "plush-heart",
+    "🐱": "scared-cat", "🍓": "berry-box", "🤡": "jester-hat",
+    "💍": "signet-ring", "🧿": "voodoo-doll", "🧠": "brain-box", "👠": "high-heels",
+    "🎩": "durov-cap", "💎": "astral-crystal",
+}
+
+
+def gift_image(emoji):
+    slug = GIFT_SLUGS.get(emoji)
+    return f"/static/img/gifts/{slug}.png" if slug else None
+
 
 class User(db.Model):
     __tablename__ = "users"
@@ -96,15 +112,16 @@ class Case(db.Model):
         lo, hi = self.prize_range()
         data = {
             "id": self.id, "name": self.name, "description": self.description,
-            "image": self.image, "emoji": self.emoji, "price": self.price,
+            "image": gift_image(self.emoji), "emoji": self.emoji, "price": self.price,
             "rarity": self.rarity, "accent": self.accent,
             "prize_min": lo, "prize_max": hi,
         }
         if with_prizes:
             total = sum(p.chance for p in self.prizes) or 1
             data["prizes"] = [{
-                "name": p.name, "emoji": p.emoji, "stars": p.stars,
-                "rarity": p.rarity, "chance": round(p.chance / total * 100, 2),
+                "name": p.name, "emoji": p.emoji, "image": gift_image(p.emoji),
+                "stars": p.stars, "rarity": p.rarity,
+                "chance": round(p.chance / total * 100, 2),
             } for p in sorted(self.prizes, key=lambda x: x.stars, reverse=True)]
         return data
 
@@ -121,7 +138,8 @@ class CasePrize(db.Model):
     chance = db.Column(db.Float, nullable=False)
 
     def to_dict(self):
-        return {"name": self.name, "emoji": self.emoji, "stars": self.stars, "rarity": self.rarity}
+        return {"name": self.name, "emoji": self.emoji, "image": gift_image(self.emoji),
+                "stars": self.stars, "rarity": self.rarity}
 
 
 class InventoryItem(db.Model):
@@ -140,6 +158,7 @@ class InventoryItem(db.Model):
     def to_dict(self):
         return {
             "id": self.id, "name": self.name, "emoji": self.emoji,
+            "image": gift_image(self.emoji),
             "stars": self.stars, "rarity": self.rarity, "case_name": self.case_name,
             "won_at": self.won_at.isoformat() if self.won_at else None,
             "is_sold": self.is_sold,

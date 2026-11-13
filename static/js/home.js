@@ -107,7 +107,7 @@
     return `
       <div class="case-card rarity-ring-${rar}" data-case="${c.id}">
         <span class="rarity-badge r-${rar}">${(window.CD.RARITY[rar] || {}).label || rar}</span>
-        <div class="c-emoji">${c.emoji || "🎁"}</div>
+        <div class="c-emoji">${CD.gift(c)}</div>
         <div class="c-name">${c.name}</div>
         <div class="c-range">⭐ ${fmt(c.prize_min)}–${fmt(c.prize_max)}</div>
         <div class="c-price">⭐ ${fmt(c.price)}</div>
@@ -125,7 +125,7 @@
           <div class="fi-name">${r.username || "Космонавт"} · ${r.prize_name}</div>
           <div class="fi-sub">${r.case_name} · ${timeAgo(r.opened_at)}</div>
         </div>
-        <div class="fi-win" style="color:var(--${rarColor(r.prize_rarity)})">+⭐ ${fmt(r.prize_stars)}</div>
+        <div class="fi-win" style="color:var(--${rarColor(r.prize_rarity)})">+${fmt(r.prize_stars)} ⭐</div>
       </div>`).join("");
   }).catch(() => {});
 

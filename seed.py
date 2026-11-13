@@ -30,47 +30,47 @@ PROMO_CODES = [
 
 CASES = [
     {
-        "name": "Стартовый кейс", "emoji": "🧸", "price": 50,
+        "name": "Стартовый кейс", "emoji": "💝", "price": 50,
         "rarity": "common", "accent": "#8a96a3", "sort_order": 1,
         "description": "Базовый набор подарков для новичков.",
         "prizes": [
-            {"name": "Мишка", "emoji": "🧸", "stars": 10, "rarity": "common", "chance": 45},
-            {"name": "Сердечко", "emoji": "💝", "stars": 25, "rarity": "common", "chance": 30},
-            {"name": "Роза", "emoji": "🌹", "stars": 70, "rarity": "rare", "chance": 18},
-            {"name": "Подарок", "emoji": "🎁", "stars": 150, "rarity": "rare", "chance": 7},
+            {"name": "Носки Пепе", "emoji": "🧦", "stars": 10, "rarity": "common", "chance": 45},
+            {"name": "Леденец", "emoji": "🍭", "stars": 30, "rarity": "common", "chance": 30},
+            {"name": "Пряник", "emoji": "🍪", "stars": 70, "rarity": "common", "chance": 18},
+            {"name": "Плюш-сердце", "emoji": "💝", "stars": 150, "rarity": "rare", "chance": 7},
         ],
     },
     {
-        "name": "Премиум кейс", "emoji": "🎁", "price": 150,
+        "name": "Премиум кейс", "emoji": "🐱", "price": 150,
         "rarity": "rare", "accent": "#3390ec", "sort_order": 2,
         "description": "Повышенный шанс на ценные подарки.",
         "prizes": [
-            {"name": "Роза", "emoji": "🌹", "stars": 40, "rarity": "common", "chance": 42},
-            {"name": "Ракета", "emoji": "🚀", "stars": 120, "rarity": "rare", "chance": 33},
-            {"name": "Букет", "emoji": "💐", "stars": 300, "rarity": "epic", "chance": 18},
-            {"name": "Шампанское", "emoji": "🍾", "stars": 600, "rarity": "epic", "chance": 7},
+            {"name": "Пряник", "emoji": "🍪", "stars": 40, "rarity": "common", "chance": 42},
+            {"name": "Напуганный кот", "emoji": "🐱", "stars": 120, "rarity": "rare", "chance": 33},
+            {"name": "Коробка ягод", "emoji": "🍓", "stars": 300, "rarity": "rare", "chance": 18},
+            {"name": "Колпак шута", "emoji": "🤡", "stars": 600, "rarity": "epic", "chance": 7},
         ],
     },
     {
-        "name": "NFT кейс", "emoji": "💎", "price": 500,
+        "name": "NFT кейс", "emoji": "🧠", "price": 500,
         "rarity": "epic", "accent": "#a76bf3", "sort_order": 3,
         "description": "Коллекционные NFT-подарки Telegram.",
         "prizes": [
-            {"name": "Подарок", "emoji": "🎁", "stars": 200, "rarity": "rare", "chance": 50},
-            {"name": "Торт", "emoji": "🎂", "stars": 450, "rarity": "epic", "chance": 30},
-            {"name": "Кубок", "emoji": "🏆", "stars": 900, "rarity": "epic", "chance": 15},
-            {"name": "Бриллиант", "emoji": "💎", "stars": 2000, "rarity": "legendary", "chance": 5},
+            {"name": "Колпак шута", "emoji": "🤡", "stars": 200, "rarity": "rare", "chance": 50},
+            {"name": "Перстень", "emoji": "💍", "stars": 450, "rarity": "epic", "chance": 30},
+            {"name": "Вуду-кукла", "emoji": "🧿", "stars": 900, "rarity": "epic", "chance": 15},
+            {"name": "Астральный кристалл", "emoji": "💎", "stars": 2000, "rarity": "legendary", "chance": 5},
         ],
     },
     {
-        "name": "Легендарный кейс", "emoji": "👑", "price": 1000,
+        "name": "Легендарный кейс", "emoji": "🎩", "price": 1000,
         "rarity": "legendary", "accent": "#f5b544", "sort_order": 4,
-        "description": "Самые редкие NFT: Кепка Дурова и Плюш Пепе.",
+        "description": "Самые редкие NFT: Кепка Дурова и Астральный кристалл.",
         "prizes": [
-            {"name": "Кольцо", "emoji": "💍", "stars": 500, "rarity": "epic", "chance": 55},
-            {"name": "Кубок", "emoji": "🏆", "stars": 1200, "rarity": "epic", "chance": 27},
+            {"name": "Куб-мозг", "emoji": "🧠", "stars": 500, "rarity": "epic", "chance": 55},
+            {"name": "Золотые туфли", "emoji": "👠", "stars": 1200, "rarity": "epic", "chance": 27},
             {"name": "Кепка Дурова", "emoji": "🎩", "stars": 2500, "rarity": "legendary", "chance": 13},
-            {"name": "Плюш Пепе", "emoji": "🐸", "stars": 5000, "rarity": "legendary", "chance": 5},
+            {"name": "Астральный кристалл", "emoji": "💎", "stars": 5000, "rarity": "legendary", "chance": 5},
         ],
     },
 ]
@@ -158,10 +158,10 @@ def seed():
         # --- инвентарь демо-пользователя (пересоздаём) ---
         InventoryItem.query.filter_by(user_id=demo.id).delete()
         for name, emoji, stars, rarity, case_name in [
-            ("Роза", "🌹", 70, "rare", "Стартовый кейс"),
-            ("Букет", "💐", 300, "epic", "Премиум кейс"),
-            ("Мишка", "🧸", 10, "common", "Стартовый кейс"),
-            ("Подарок", "🎁", 150, "rare", "Стартовый кейс"),
+            ("Плюш-сердце", "💝", 150, "rare", "Стартовый кейс"),
+            ("Перстень", "💍", 450, "epic", "NFT кейс"),
+            ("Напуганный кот", "🐱", 120, "rare", "Премиум кейс"),
+            ("Леденец", "🍭", 30, "common", "Стартовый кейс"),
         ]:
             db.session.add(InventoryItem(
                 user_id=demo.id, name=name, emoji=emoji, stars=stars,
@@ -173,14 +173,14 @@ def seed():
         db.session.flush()
         now = datetime.utcnow()
         feed = [
-            (players[0], "Легендарный кейс", "🐸 Плюш Пепе", 5000, "legendary", 2),
-            (players[1], "NFT кейс", "💎 Бриллиант", 2000, "legendary", 9),
-            (demo, "Премиум кейс", "💐 Букет", 300, "epic", 18),
-            (players[2], "Премиум кейс", "🍾 Шампанское", 600, "epic", 27),
-            (players[4], "Стартовый кейс", "🎁 Подарок", 150, "rare", 44),
-            (players[3], "NFT кейс", "🎂 Торт", 450, "epic", 70),
-            (demo, "Стартовый кейс", "🌹 Роза", 70, "rare", 95),
-            (players[5], "Стартовый кейс", "💝 Сердечко", 25, "common", 130),
+            (players[0], "Легендарный кейс", "💎 Астральный кристалл", 5000, "legendary", 2),
+            (players[1], "NFT кейс", "💎 Астральный кристалл", 2000, "legendary", 9),
+            (demo, "Премиум кейс", "🐱 Напуганный кот", 120, "rare", 18),
+            (players[2], "Премиум кейс", "🤡 Колпак шута", 600, "epic", 27),
+            (players[4], "Стартовый кейс", "💝 Плюш-сердце", 150, "rare", 44),
+            (players[3], "NFT кейс", "💍 Перстень", 450, "epic", 70),
+            (demo, "Стартовый кейс", "🍪 Пряник", 70, "common", 95),
+            (players[5], "Стартовый кейс", "🍭 Леденец", 30, "common", 130),
         ]
         for user, case_name, prize_name, stars, rarity, mins_ago in feed:
             db.session.add(CaseHistory(

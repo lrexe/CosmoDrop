@@ -11,9 +11,9 @@
         <a href="{{ url_for('games') }}" class="btn ghost">Мини-игры</a>
     </div>
     <div class="hero-gifts">
-        <span class="g1">💎</span>
-        <span class="g2">🎁</span>
-        <span class="g3">🧸</span>
+        <img class="g1 gift-img" src="{{ url_for('static', filename='img/gifts/astral-crystal.png') }}" data-emoji="💎" onerror="CD.imgFallback(this)" alt="">
+        <img class="g2 gift-img" src="{{ url_for('static', filename='img/gifts/durov-cap.png') }}" data-emoji="🎩" onerror="CD.imgFallback(this)" alt="">
+        <img class="g3 gift-img" src="{{ url_for('static', filename='img/gifts/plush-heart.png') }}" data-emoji="💝" onerror="CD.imgFallback(this)" alt="">
     </div>
 </section>
 
