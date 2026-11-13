@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0b0e24">
+    <title>{% block title %}CosmoDrop{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>window.DEMO_TELEGRAM_ID = {{ DEMO_TELEGRAM_ID }};</script>
+    {% block head_extra %}{% endblock %}
+</head>
+<body>
+<div id="starfield"></div>
+
+<div class="app">
+    <header class="header">
+        <div class="user-info">
+            <div class="avatar" data-avatar>🧑‍🚀</div>
+            <div class="user-text">
+                <div class="username"><span data-username>Космонавт</span> <span class="lvl-badge" data-level>Lv 1</span></div>
+                <div class="earned" data-earned>⭐ 0 заработано</div>
+            </div>
+        </div>
+        <div class="balance-box">
+            <button class="plus" data-topup title="Пополнить">＋</button>
+            <div class="balance" data-balance>⭐ 0</div>
+        </div>
+    </header>
+
+    <main class="content">
+        {% block content %}{% endblock %}
+    </main>
+</div>
+
+<nav class="bottom-bar">
+    <a href="{{ url_for('main') }}" class="nav-item {{ 'active' if active == 'home' }}">
+        <span>🏠</span><small>Главная</small>
+    </a>
+    <a href="{{ url_for('cases') }}" class="nav-item {{ 'active' if active == 'cases' }}">
+        <span>🎁</span><small>Кейсы</small>
+    </a>
+    <a href="{{ url_for('games') }}" class="nav-item {{ 'active' if active == 'games' }}">
+        <span>🎮</span><small>Игры</small>
+    </a>
+    <a href="{{ url_for('rating') }}" class="nav-item {{ 'active' if active == 'rating' }}">
+        <span>🏆</span><small>Рейтинг</small>
+    </a>
+    <a href="{{ url_for('profile') }}" class="nav-item {{ 'active' if active == 'profile' }}">
+        <span>👤</span><small>Профиль</small>
+    </a>
+</nav>
+
+<div id="toast-root"></div>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}CosmoDrop — Игры{% endblock %}
+
+{% block content %}
+<section class="page-head reveal">
+    <h1>Мини-игры</h1>
+    <p>Апгрейд подарков, контракты и колесо фортуны — умножай звёзды.</p>
+</section>
+
+<section class="seg reveal" id="game-seg">
+    <button data-tab="upgrade" class="active">🔼 Апгрейд</button>
+    <button data-tab="contract">📄 Контракты</button>
+    <button data-tab="wheel">🎡 Колесо</button>
+</section>
+
+<section id="game-root" class="reveal">
+    <div class="center" style="padding:30px"><div class="skeleton" style="height:160px"></div></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/games.js') }}"></script>
+{% endblock %}

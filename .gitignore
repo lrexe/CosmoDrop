@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtualenv
+.venv/
+venv/
+env/
+
+# Flask / SQLite (генерируются seed.py)
+instance/*.db
+*.sqlite3
+
+# Env / IDE
+.env
+.idea/
+.vscode/
+.DS_Store
