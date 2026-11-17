@@ -413,6 +413,7 @@
   animation: vl-dlg-spin .9s linear infinite;
 }
 @keyframes vl-dlg-spin { to { transform: rotate(360deg); } }
+.vl-dlg-progress.is-idle { display: none; } /* polling gave up: the status text stays, the spinner goes */
 
 .vl-dlg-actions { display: grid; gap: 8px; }
 

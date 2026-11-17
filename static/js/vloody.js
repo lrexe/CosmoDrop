@@ -82,12 +82,18 @@
   }
   // exactly one .scr.on at the end; the entrance (≤ 220 ms shift + fade) is VLFx.transition's, and a quick second
   // call cancels the first one, so rapid tab clicks never leave two screens or a half-faded one
+  // `booted` flips at the end of init(): focus moves to #content only for user-initiated navigation, never on the
+  // first load (deep link) and never on polling refreshes (those call renderPool, not show)
+  let booted = false;
   function show(screen) {
     const to = $("sc-" + screen), from = document.querySelector("#screens > .scr.on");
     document.querySelectorAll(".scr.on").forEach((s) => { if (s !== to && s !== from) s.classList.remove("on"); });
     VLFx.transition(from || to, to);
     $("screens").scrollTop = 0;
-    $("vl-title").textContent = SCREEN_TITLE[screen] || "Vloody";
+    const title = SCREEN_TITLE[screen] || "Vloody";
+    $("vl-title").textContent = title;
+    document.title = title + " · Vloody";
+    if (booted) $("content").focus({ preventScroll: true });
   }
   function tab(name) {
     stopPoolWatch();
@@ -319,6 +325,7 @@
     state.offset = p.now_ts - Math.floor(Date.now() / 1000);
     markNav(state.back || "home"); // раунд открыт из этого раздела, «назад» вернёт в него
     show(MODE_SCREEN[p.mode]);
+    document.title = p.title + " · Vloody"; // the round's gift title (plain text, not HTML)
     state.poolFresh = true; // первая отрисовка: дверь сейфа без анимации, раскрытие аукциона проигрывается
     renderPool(false);
     state.poolFresh = false;
@@ -820,21 +827,36 @@
     sl.value = Math.min(sl.max, Math.max(p.min_stake, 50));
     $("sm-min").textContent = p.min_stake; $("sm-bal").textContent = fmt(bal);
     $("sm-input").value = "";
-    stakeSync(+sl.value);
+    stakeSync();
     openOv("stake-modal");
   }
-  function stakeSync(v) {
+  // one source of truth for what the dialog shows AND what confirm sends: the typed amount while the field is
+  // non-empty (valid only if a whole number within [min, balance]), otherwise the slider value
+  function stakeState() {
+    const p = state.pool, inp = $("sm-input"), raw = inp.value.trim();
+    if (raw === "" && !(inp.validity && inp.validity.badInput)) return { amount: parseInt($("sm-slider").value, 10) || 0, ok: true, hint: "" };
+    const bal = state.profile ? state.profile.balance : 0;
+    const n = /^\d+$/.test(raw) ? parseInt(raw, 10) : NaN;
+    if (isNaN(n)) return { amount: 0, shown: raw || "—", ok: false, hint: "Введите целое число VLD" };
+    if (n < p.min_stake) return { amount: n, ok: false, hint: `Минимум ${p.min_stake} VLD` };
+    if (n > bal) return { amount: n, ok: false, hint: "Недостаточно VLD на балансе" };
+    return { amount: n, ok: true, hint: "" };
+  }
+  function stakeSync() {
     const p = state.pool; if (!p) return;
-    $("m-sv-num").textContent = fmt(v);
+    const st = stakeState(), v = st.ok || st.amount ? st.amount : 0;
+    $("m-sv-num").textContent = st.shown || fmt(st.amount);
     $("sm-pcount").textContent = p.participants;
     const bank = (p.bank || 0) + v;
     $("sm-chance").textContent = (bank ? ((p.my_total + v) / bank * 100).toFixed(1) : 0) + "%";
+    setAlert($("sm-warn"), st.hint);
+    document.querySelector('[data-act="stake-confirm"]').disabled = !st.ok;
   }
-  const stakeValue = () => parseInt($("sm-input").value, 10) || parseInt($("sm-slider").value, 10);
   async function stakeConfirm() {
     const p = state.pool; if (!p) return;
+    const st = stakeState(); if (!st.ok) { stakeSync(); return; }
     try {
-      const r = await api(`/api/pools/${p.id}/stake`, { amount: stakeValue() });
+      const r = await api(`/api/pools/${p.id}/stake`, { amount: st.amount });
       setBalance(r.balance); closeOv("stake-modal");
       haptic("ok"); toast("Ставка принята");
       applyPool(r.pool, false);
@@ -1308,8 +1330,11 @@
     $("tt-val").textContent = v; $("tt-eq-ton").textContent = v;
     $("tt-eq-vld").textContent = fmt(Math.floor(v * state.profile.rates.vld_per_ton));
   }
+  // the waiting spinner runs only while we poll; after the 5-minute give-up it is hidden (the status text stays)
+  const tonSpin = (on) => document.querySelector("#tt-wait .vl-dlg-progress").classList.toggle("is-idle", !on);
   function tonReset() {
     clearInterval(tonPoll); tonPoll = 0; tonDep = null;
+    tonSpin(true);
     $("tt-form").classList.remove("hid"); $("tt-wait").classList.add("hid");
   }
   async function tonPay() {
@@ -1317,7 +1342,7 @@
     if (amount < R.ton_min) { toast(`Минимум ${R.ton_min} TON`); return; }
     try { tonDep = await api("/api/wallet/ton/intent", { amount_ton: amount }); }
     catch (e) { toast(e.message); return; }
-    $("tt-form").classList.add("hid"); $("tt-wait").classList.remove("hid");
+    $("tt-form").classList.add("hid"); $("tt-wait").classList.remove("hid"); tonSpin(true);
     $("tt-w-amount").textContent = `${amount} TON → ${fmt(tonDep.will_credit)} VLD`;
     $("tt-w-addr").textContent = tonDep.address; $("tt-w-comment").textContent = tonDep.comment;
     $("tt-status").textContent = tonDep.demo ? "Демо: настоящий перевод не нужен" : "Ждём перевод в блокчейне…";
@@ -1328,7 +1353,11 @@
     let tries = 0;
     clearInterval(tonPoll);
     tonPoll = setInterval(async () => {
-      if (!tonDep || ++tries > 60) { clearInterval(tonPoll); if (tonDep) $("tt-status").textContent = "Перевод пока не найден. Он зачислится автоматически, когда дойдёт."; return; }
+      if (!tonDep || ++tries > 60) {
+        clearInterval(tonPoll);
+        if (tonDep) { tonSpin(false); $("tt-status").textContent = "Перевод пока не найден. Он зачислится автоматически, когда дойдёт."; }
+        return;
+      }
       try {
         const r = await api("/api/wallet/ton/check", { deposit_id: tonDep.deposit_id });
         if (r.status === "credited") tonCredited(r);
@@ -1402,7 +1431,7 @@
       try {
         const u = await api("/api/users/lookup?telegram_id=" + id);
         if ($("tr-recipient").value.trim() !== id) return;
-        st.textContent = "✓ " + u.name; st.classList.add("ok"); recipientOk = true;
+        st.innerHTML = icon("i-check"); st.append(" " + u.name); st.classList.add("ok"); // name goes in as text recipientOk = true;
       } catch (e) { st.textContent = e.message; st.classList.add("err"); }
       transferCalc();
     }, 350);
@@ -1579,8 +1608,8 @@
   tabKeys($("ptabs"), (b) => switchPT(b.dataset.pt));
   tabKeys($("lb-tabs"), (b) => switchLB(b.dataset.lb));
 
-  $("sm-slider").addEventListener("input", (e) => { $("sm-input").value = ""; stakeSync(+e.target.value); });
-  $("sm-input").addEventListener("input", (e) => stakeSync(parseInt(e.target.value, 10) || 0));
+  $("sm-slider").addEventListener("input", () => { $("sm-input").value = ""; stakeSync(); });
+  $("sm-input").addEventListener("input", stakeSync);
   $("vt-num").addEventListener("input", vaultPick);
   $("vt-num").addEventListener("keydown", (e) => { if (e.key === "Enter") tryVault(); });
   $("auc-amt").addEventListener("keydown", (e) => { if (e.key === "Enter") placeBid(); });
@@ -1609,6 +1638,7 @@
       if (start.startsWith("pool_")) openPool(parseInt(start.slice(5), 10));
     } catch (e) { toast("Не удалось загрузить данные"); }
     $("app").classList.add("show");
+    booted = true;
     setTimeout(hideSplash, 1500);
   }
   // заставка гаснет (opacity, vl-shell.css) и уходит из DOM: по transitionend или по таймеру, если события не будет
