@@ -36,7 +36,7 @@
   --vl-line: rgba(255, 255, 255, .08);
   --line-strong: rgba(255, 255, 255, .14);
   --text: #eaf2ff;
-  --muted: #7f93b3;
+  --muted: #8498b8; /* AA also for placeholders: on --field over --surface-2 */
   --accent: #1a72e3;
   --accent-2: #1259c2;
   --accent-grad: linear-gradient(180deg, var(--accent), var(--accent-2));

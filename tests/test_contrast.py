@@ -10,17 +10,26 @@ AA = 4.5
 ok = True
 
 # Пары (текст, фон). on-accent проверяется на обоих концах градиента кнопки: --accent (светлый) и --accent-2 (тёмный).
+# Статусные цвета и accent-text стоят и на фоне страницы, и на --surface-2 (плашки, тосты, строки списков).
 PAIRS = [
     ("text", "bg"), ("muted", "bg"),
     ("text", "surface"), ("muted", "surface"),
     ("text", "surface-2"), ("muted", "surface-2"),
     ("on-accent", "accent"), ("on-accent", "accent-2"),
-    ("accent-text", "bg"), ("accent-text", "surface"),
-    ("success", "surface"), ("warn", "surface"), ("danger", "surface"),
+    ("accent-text", "bg"), ("accent-text", "surface"), ("accent-text", "surface-2"),
+    ("success", "bg"), ("success", "surface"), ("success", "surface-2"),
+    ("warn", "bg"), ("warn", "surface"), ("warn", "surface-2"),
+    ("danger", "bg"), ("danger", "surface"), ("danger", "surface-2"),
+]
+# Полупрозрачные фоны: (текст, фон, подложки, на которых этот фон встречается). --field — поле ввода,
+# muted на нём — плейсхолдер; поле лежит на странице, на карточке и на --surface-2.
+OVER_PAIRS = [
+    ("muted", "field", ("bg", "surface", "surface-2")),
+    ("text", "field", ("bg", "surface", "surface-2")),
 ]
 REQUIRED = ["bg", "bg-glow", "surface", "surface-2", "vl-line", "text", "muted", "accent", "accent-2",
-            "on-accent", "accent-text", "success", "warn", "danger", "shadow-1", "shadow-2", "r-sm", "r-md", "r-lg",
-            "font", "vl-mono"]
+            "on-accent", "accent-text", "success", "warn", "danger", "shadow-1", "shadow-2", "shadow-cta",
+            "focus", "field", "r-sm", "r-md", "r-lg", "font", "vl-mono"]
 
 
 def check(name, cond, detail=""):
@@ -67,6 +76,24 @@ def hex_rgb(v):
     return tuple(int(h[i:i + 2], 16) / 255 for i in (0, 2, 4))
 
 
+def rgba(v):
+    """#rrggbb или rgba(r, g, b, a) -> ((r, g, b) 0..1, alpha); иначе None."""
+    c = hex_rgb(v)
+    if c is not None:
+        return c, 1.0
+    m = re.fullmatch(r"rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)", v.strip())
+    if not m:
+        return None
+    a = float(m.group(4)) if m.group(4) is not None else 1.0
+    return tuple(int(m.group(i)) / 255 for i in (1, 2, 3)), a
+
+
+def over(top, base):
+    """Цвет полупрозрачного top поверх непрозрачной подложки base."""
+    (c, a) = top
+    return tuple(c[i] * a + base[i] * (1 - a) for i in range(3))
+
+
 def lum(rgb):
     lin = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in rgb]
     return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
@@ -85,8 +112,19 @@ def main():
     with open(TOKENS, encoding="utf-8") as f:
         css = strip_comments(f.read())
     bl = blocks(css)
-    check("plain :root falls back to dark",
-          any(":root" in sel and ':root[data-theme="dark"]' in [s.replace("'", '"') for s in sel] for sel, _ in bl))
+    # Без атрибута data-theme действуют все блоки с селектором `:root` (по порядку). Каждое значение тёмной темы
+    # должно получиться и так: если кто-то разнесёт `:root` и `:root[data-theme="dark"]` и значения разойдутся — FAIL.
+    plain = {}
+    for sel, decls in bl:
+        if ":root" in sel:
+            plain.update(decls)
+    dark = theme_vars(bl, "dark")
+    diff = [k for k in dark if plain.get(k) != dark[k]]
+    check("plain :root falls back to dark", dark and not diff,
+          ", ".join(f"--{k}: {plain.get(k)!r} vs dark {dark[k]!r}" for k in diff))
+    light = theme_vars(bl, "light")
+    check("light theme differs from the plain-:root fallback", light.get("bg") and light.get("bg") != plain.get("bg"),
+          f"{light.get('bg')} vs {plain.get('bg')}")
     for theme in ("dark", "light"):
         v = theme_vars(bl, theme)
         missing = [k for k in REQUIRED if k not in v]
@@ -98,6 +136,18 @@ def main():
                 continue
             r = ratio(a, b)
             check(f"{theme}: {fg}/{bg} >= {AA}", r >= AA, f"{v[fg]} on {v[bg]} = {r:.2f}")
+        for fg, bg, bases in OVER_PAIRS:
+            a, top = hex_rgb(v.get(fg, "")), rgba(v.get(bg, ""))
+            if a is None or top is None:
+                check(f"{theme}: {fg}/{bg} parse", False, f"{v.get(fg)!r} / {v.get(bg)!r}")
+                continue
+            for base in bases:
+                b = hex_rgb(v.get(base, ""))
+                if b is None:
+                    check(f"{theme}: {base} is #rrggbb", False, repr(v.get(base)))
+                    continue
+                r = ratio(a, over(top, b))
+                check(f"{theme}: {fg}/{bg} (on {base}) >= {AA}", r >= AA, f"{v[fg]} on {v[bg]} over {v[base]} = {r:.2f}")
         # <meta name="theme-color"> / Telegram header colour in vl-theme.js must match --bg.
         js = ""
         if os.path.isfile(THEME_JS):

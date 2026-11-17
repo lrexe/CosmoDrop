@@ -863,6 +863,8 @@
   }
   function tabKeys(list, pick) {
     list.addEventListener("keydown", (e) => {
+      // Alt+←/→ is browser back/forward, Ctrl/Cmd+arrows are text/OS shortcuts: leave them alone
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
       const tabs = Array.from(list.querySelectorAll('[role="tab"]')).filter((b) => b.getClientRects().length);
       const i = tabs.indexOf(document.activeElement);
       if (i < 0) return;
@@ -1187,9 +1189,20 @@
     if (t === "wd") loadPayouts();
     if (t === "inv") loadGifts().then(renderInventory);
   }
-  // на десктопе инвентарь всегда слева: если открыта вкладка «Инвентарь», справа показываем транзакции
+  // на десктопе инвентарь всегда слева: если открыта вкладка «Инвентарь», справа показываем транзакции.
+  // Там же #ptc-inv перестаёт быть tabpanel (его вкладка скрыта) и подписан своим видимым заголовком;
+  // на телефоне — снова tabpanel вкладки «Инвентарь». Слушатель вешается один раз, без перерисовки.
+  function syncInvRole() {
+    const inv = $("ptc-inv");
+    if (isDesk()) { inv.removeAttribute("role"); inv.setAttribute("aria-labelledby", "pf-inv-h"); }
+    else { inv.setAttribute("role", "tabpanel"); inv.setAttribute("aria-labelledby", "pt-inv"); }
+  }
+  syncInvRole();
   if (deskMq) {
-    const onDesk = () => { if (isDesk() && state.pt === "inv" && $("sc-profile").classList.contains("on")) switchPT("tx"); };
+    const onDesk = () => {
+      syncInvRole();
+      if (isDesk() && state.pt === "inv" && $("sc-profile").classList.contains("on")) switchPT("tx");
+    };
     if (deskMq.addEventListener) deskMq.addEventListener("change", onDesk); else if (deskMq.addListener) deskMq.addListener(onDesk);
   }
 
@@ -1518,7 +1531,9 @@
     if ((el = t("[data-share]"))) return sharePool(+el.dataset.share);
     if ((el = t("[data-pool]"))) {
       // the whole card is clickable, but not when the click ends a text selection inside it (copying a name)
-      if (!e.target.closest("button") && window.getSelection && String(window.getSelection()).trim()) return;
+      // (a selection elsewhere on the page does not block the card)
+      const sel = window.getSelection ? window.getSelection() : null;
+      if (!e.target.closest("button") && sel && String(sel).trim() && sel.anchorNode && el.contains(sel.anchorNode)) return;
       return openPool(+el.dataset.pool);
     }
     if ((el = t("[data-flt]"))) {
