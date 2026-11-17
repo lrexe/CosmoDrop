@@ -8,8 +8,8 @@
   const $ = (id) => document.getElementById(id);
   const STAR = '<span class="star-i"></span>';
   const PAL = ["#3b0764", "#1e1b4b", "#0c4a6e", "#064e3b", "#1c1917", "#4a044e", "#0f172a", "#1a2e05", "#450a0a", "#0a0a2e"];
-  const MODE_BADGE = { wheel: "🎡 Колесо", vault: "🔒 Сейф", auction: "🕶 Аукцион" };
-  const MODE_BADGE_CLS = { wheel: "badge-w", vault: "badge-g", auction: "badge-auc" };
+  const MODE_INFO = { wheel: { name: "Колесо", icon: "i-wheel" }, vault: { name: "Сейф", icon: "i-lock" },
+    auction: { name: "Аукцион", icon: "i-eye-off" } };
   const MODE_SCREEN = { wheel: "wheel", vault: "vault", auction: "auction" };
   const STAKE_CHIPS = { wheel: [5, 25, 50, 100], vault: [5, 10, 25, 50], auction: [20, 50, 100, 250] };
   const MODE_HINT = {
@@ -118,50 +118,83 @@
       const all = state.pools.live.concat(state.pools.finished);
       if (all.length) state.offset = all[0].now_ts - Math.floor(Date.now() / 1000);
       renderPools();
-    } catch (e) { $("pools-list").innerHTML = `<div class="empty-note">${esc(e.message)}</div>`; }
-  }
-
-  function stat(lbl, val, cls) {
-    return `<div class="gwc-stat"><span class="gwc-lbl">${lbl}</span><span class="gwc-val ${cls || ""}">${val}</span></div>`;
-  }
-
-  function poolCard(p) {
-    const live = p.status === "live";
-    let stats = "", bar = 0;
-    if (!live) {
-      stats = stat("Победитель", p.winner ? esc(p.winner.name) + " 🏆" : "—", "em")
-        + stat("Банк", fmt(p.bank) + " " + STAR) + stat("Статус", "Завершён", "em");
-      bar = 100;
-    } else if (p.mode === "wheel") {
-      stats = stat("Банк", fmt(p.bank) + " " + STAR) + stat("Участников", p.participants + " чел.")
-        + stat("Мин. ставка", p.min_stake + " " + STAR)
-        + stat("Осталось", `<span data-ends="${p.ends_ts}">—</span>`);
-      bar = timeBar(p);
-    } else if (p.mode === "vault") {
-      stats = stat("Банк", fmt(p.bank) + " " + STAR) + stat("Ставка", p.min_stake + " " + STAR)
-        + stat("Занято чисел", `${p.taken}/${p.vault_max}`) + stat("Окончание", "Бессрочно", "rose");
-      bar = p.taken / p.vault_max * 100;
-    } else {
-      stats = stat("Твоя ставка", p.my_total ? fmt(p.my_total) + " " + STAR : "Скрыто")
-        + stat("Мин. ставка", p.min_stake + " " + STAR)
-        + stat("До раскрытия", `<span data-ends="${p.ends_ts}">—</span>`);
-      bar = timeBar(p);
+    } catch (e) {
+      $("pools-list").removeAttribute("aria-busy");
+      $("pools-list").innerHTML = emptyState("i-close", esc(e.message));
     }
-    const hot = live && p.bank >= 100 ? `<span class="badge badge-hot">🔥 ТОП</span>` : "";
-    const mine = p.is_organizer ? `<span class="badge badge-g">Твой раунд</span>` : "";
-    return `
-      <div class="gwc ${live ? "" : "done"}">
-        <div class="gwc-top"><span class="badge ${MODE_BADGE_CLS[p.mode]}">${MODE_BADGE[p.mode]}</span>${hot}${mine}</div>
-        <div class="gwc-body">
-          <div class="gwc-art ${esc(p.art)}">${esc(p.emoji)}</div>
-          <div class="gwc-meta"><div class="gwc-name">${esc(p.title)}</div>${stats}</div>
+  }
+
+  // карточки раунда: разметка и стили — static/css/vl-cards.css, картинка и эффекты — static/js/vl-fx.js
+  const icon = (id, cls) => `<svg class="ic ${cls || ""}" aria-hidden="true"><use href="#${id}"/></svg>`;
+  const HIDDEN = `<span class="vl-pc-hidden">${icon("i-lock", "ic-sm")}Скрыто</span>`;
+  const seenBank = {}; // id → последний показанный банк: «докручиваем» только новое или изменившееся
+
+  function emptyState(ic, text, action) {
+    return `<div class="vl-empty">${icon(ic, "ic-lg")}<p>${text}</p>${action || ""}</div>`;
+  }
+  function stat(lbl, val, cls) {
+    return `<div class="vl-pc-stat ${cls || ""}"><dt>${lbl}</dt><dd>${val}</dd></div>`;
+  }
+  function meta(lbl, val) {
+    return `<div class="vl-pc-meta-i"><span>${lbl}</span><b class="num">${val}</b></div>`;
+  }
+
+  function poolCard(p, featured) {
+    const live = p.status === "live";
+    const m = MODE_INFO[p.mode] || { name: p.mode, icon: "i-rounds" };
+    const bank = p.bank == null ? HIDDEN
+      : `<span class="num" data-bank="${p.id}" data-v="${p.bank}">${fmt(p.bank)}</span>`;
+    const people = p.participants == null ? HIDDEN : `<span class="num">${fmt(p.participants)}</span>`;
+    let third, bar = null, metas;
+    if (!live) {
+      const w = p.winner ? (p.winner.is_me ? "Ты" : esc(p.winner.name)) : "—";
+      third = stat("Победитель", `<span class="vl-pc-winner">${w}</span>`, "vl-pc-stat-win");
+      metas = meta("Завершён", ago(p.ends_ts || p.created_ts));
+    } else if (p.mode === "vault") {
+      third = stat("Занято чисел", `<span class="num">${p.taken}/${p.vault_max}</span>`);
+      bar = p.vault_max ? p.taken / p.vault_max * 100 : 0;
+      metas = meta("Попытка", fmt(p.min_stake) + " VLD") + meta("Окончание", "бессрочно");
+    } else {
+      third = stat(p.mode === "auction" ? "До раскрытия" : "Осталось",
+        `<span class="num" data-ends="${p.ends_ts}">—</span>`);
+      bar = timeBar(p);
+      metas = meta("Мин. ставка", fmt(p.min_stake) + " VLD")
+        + (p.mode === "auction" && p.my_total ? meta("Твоя ставка", fmt(p.my_total) + " VLD") : "");
+    }
+    const status = live ? `<span class="tag tag-live">идёт</span>` : `<span class="tag">завершён</span>`;
+    const mine = p.is_organizer ? `<span class="tag tag-accent">твой раунд</span>` : "";
+    const tid = `pc-t-${p.id}`;
+    const cls = "vl-pc" + (featured ? " vl-pc-feat" : "") + (live ? "" : " vl-pc-done");
+    return `<div class="vl-cell${featured ? " vl-cell-feat" : ""}">
+      <article class="${cls}" aria-labelledby="${tid}" data-pool="${p.id}"${live ? " data-tilt" : ""}>
+        <span class="vl-pc-sheen" data-tilt-sheen aria-hidden="true"></span>
+        <div class="vl-pc-head">
+          <div class="vl-pc-gift" data-tilt-float>${VLFx.giftImg(p, "vl-pc-pic")}</div>
+          <div class="vl-pc-id">
+            <div class="vl-pc-kicker"><span class="vl-pc-mode">${icon(m.icon)}${m.name}</span>${status}${mine}</div>
+            <h3 class="vl-pc-title" id="${tid}" title="${esc(p.title)}">${esc(p.title)}</h3>
+            <div class="vl-pc-org">от <b>${esc(p.organizer)}</b></div>
+          </div>
         </div>
-        <div class="gwc-bar"><div class="gwc-bar-fill" style="width:${Math.min(100, bar).toFixed(0)}%"></div></div>
-        <div class="gwc-foot">
-          <button class="btn-enter rp" data-pool="${p.id}">${live ? "Перейти" : "Результат"}</button>
-          <div class="btn-shr rp" data-share="${p.id}">↗</div>
+        <dl class="vl-pc-stats">${stat("Банк, VLD", bank)}${stat("Участники", people)}${third}</dl>
+        ${bar == null ? "" : `<div class="vl-pc-bar" aria-hidden="true"><i style="width:${Math.min(100, bar).toFixed(0)}%"></i></div>`}
+        <div class="vl-pc-foot">
+          <div class="vl-pc-meta">${metas}</div>
+          <button type="button" class="vl-btn vl-btn-sm ${live ? "vl-btn-primary" : "vl-btn-ghost"} vl-pc-go" data-pool="${p.id}">${live ? "Перейти" : "Результат"}</button>
+          <button type="button" class="vl-btn vl-btn-ghost vl-btn-sm vl-btn-icon vl-pc-share" data-share="${p.id}"
+            aria-label="Скопировать ссылку на раунд" title="Скопировать ссылку">${icon("i-share")}</button>
         </div>
-      </div>`;
+      </article></div>`;
+  }
+  // банк «докручивается», когда карточка появилась впервые или сумма изменилась после обновления
+  function animateBanks(root) {
+    root.querySelectorAll("[data-bank]").forEach((el) => {
+      const id = el.dataset.bank, to = +el.dataset.v, prev = seenBank[id];
+      seenBank[id] = to;
+      if (prev === to) return;
+      el.textContent = fmt(prev || 0);
+      VLFx.countUp(el, to);
+    });
   }
   function timeBar(p) {
     if (!p.ends_ts) return 0;
@@ -173,13 +206,29 @@
     let list = state.pools.live.slice();
     const f = state.filter;
     if (f === "hot") list.sort((a, b) => (b.bank || 0) - (a.bank || 0));
+    else if (f === "new") list.sort((a, b) => b.created_ts - a.created_ts);
     else if (f === "soon") list = list.filter((p) => p.ends_ts).sort((a, b) => a.ends_ts - b.ends_ts);
-    else if (MODE_BADGE[f]) list = list.filter((p) => p.mode === f);
-    $("pools-list").innerHTML = list.length ? list.map(poolCard).join("")
-      : `<div class="empty-note">Активных розыгрышей пока нет.<br>Стань первым — нажми «Создать».</div>`;
-    $("pools-finished").innerHTML = state.pools.finished.length ? state.pools.finished.map(poolCard).join("")
-      : `<div class="empty-note">Пока пусто</div>`;
+    else if (MODE_INFO[f]) list = list.filter((p) => p.mode === f);
+    // «Все»: самый активный раунд (больше участников, затем банк) — первой крупной карточкой
+    let feat = -1;
+    if (f === "all" && list.length) {
+      const score = (p) => (p.participants || 0) * 1e9 + (p.bank || 0);
+      feat = list.reduce((bi, p, i) => (score(p) > score(list[bi]) ? i : bi), 0);
+      list.unshift(list.splice(feat, 1)[0]); feat = 0;
+    }
+    const live = $("pools-list"), done = $("pools-finished");
+    live.removeAttribute("aria-busy");
+    live.innerHTML = list.length ? list.map((p, i) => poolCard(p, i === feat)).join("")
+      : state.pools.live.length
+        ? emptyState("i-rounds", "В этом разделе сейчас нет раундов")
+        : emptyState("i-rounds", "Активных раундов пока нет. Создай первый — подарок уйдёт в эскроу до розыгрыша.",
+          `<button type="button" class="vl-btn vl-btn-primary vl-btn-sm" data-tab="create">${icon("i-create")}Создать раунд</button>`);
+    done.innerHTML = state.pools.finished.length ? state.pools.finished.map((p) => poolCard(p, false)).join("")
+      : emptyState("i-clock", "Завершённых раундов пока нет");
     tickTimers();
+    animateBanks(live); animateBanks(done);
+    VLFx.tilt(live);
+    VLFx.stagger(live); VLFx.stagger(done);
   }
 
   // ================================================================== РАУНД
@@ -930,11 +979,14 @@
     let el;
     if ((el = t("[data-act]"))) { const fn = ACTIONS[el.dataset.act]; if (fn) fn(); return; }
     if ((el = t("[data-tab]"))) return tab(el.dataset.tab);
-    if ((el = t("[data-pool]"))) return openPool(+el.dataset.pool);
+    // share first: on the home cards the share button sits inside the clickable card ([data-pool])
     if ((el = t("[data-share]"))) return sharePool(+el.dataset.share);
+    if ((el = t("[data-pool]"))) return openPool(+el.dataset.pool);
     if ((el = t("[data-flt]"))) {
       state.filter = el.dataset.flt;
-      document.querySelectorAll("#filters .ft").forEach((b) => b.classList.toggle("on", b === el));
+      document.querySelectorAll("#filters [data-flt]").forEach((b) => {
+        b.classList.toggle("is-on", b === el); b.setAttribute("aria-pressed", String(b === el));
+      });
       return renderPools();
     }
     if ((el = t("[data-wmode]"))) {
