@@ -123,6 +123,8 @@
 .input:focus { outline: none; border-color: var(--accent-text); box-shadow: var(--focus); }
 .input[aria-invalid="true"] { border-color: var(--danger); }
 .input.num { font-family: var(--vl-mono); }
+/* iOS Safari zooms into a focused field below 16px; zoom is allowed (viewport), so phone/touch fields are 16px */
+@media (pointer: coarse), (max-width: 860px) { .input { font-size: 16px; } }
 
 /* ── card ── */
 .card {
