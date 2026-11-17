@@ -1,5 +1,5 @@
-/* Vloody application shell: sidebar (desktop), bottom tab bar (phone), top bar, splash.
-   Needs vl-tokens.css + vl-base.css; loaded AFTER the legacy vloody.css / vloody-app.css.
+/* Vloody application shell: reset, screens, sidebar (desktop), bottom tab bar (phone), top bar, toast, splash.
+   Needs vl-tokens.css + vl-base.css. Loaded only by templates/vloody.html (the admin page has its own styles).
 
    Structure (templates/vloody.html):
      #app (JS adds .show in init())
@@ -12,11 +12,17 @@
    Layout, CSS only (no matchMedia): phone ≤ 860px (mobile-first base rules), desktop ≥ 861px.
    The page itself never scrolls: html/body are fixed to the viewport and #screens scrolls, on the phone
    between the top bar and the fixed tab bar, on desktop inside the main column next to the fixed sidebar.
+   Every screen is a div.scr.vl-redone; exactly one carries .on (screen change is animated by VLFx.transition). */
 
-   CONVENTION for the redesign (Tasks 7+): screens that are not redesigned yet keep the legacy styles and are
-   capped by `.scr:not(.vl-redone)` (max-width 520px, centred; on light theme they sit on a dark legacy panel
-   so the legacy light-on-dark text stays readable). A task that redesigns a screen adds the class `vl-redone`
-   to its `div.scr` and gets the full content column (up to 1180px) and the theme tokens. */
+/* ── reset (the whole app is styled from zero: no UA margins/paddings, border-box everywhere) ── */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+/* global utility: JS hides/shows blocks with .hid */
+.hid { display: none !important; }
 
 /* ── page ── */
 html,
@@ -66,24 +72,13 @@ body {
   padding-bottom: calc(var(--vl-tabbar-h) + 24px + env(safe-area-inset-bottom, 0px));
 }
 #screens::-webkit-scrollbar { width: 0; height: 0; }
-/* screen change is animated by VLFx.transition (JS, ≤ 220 ms, cancellable); the legacy CSS entrance
-   (vloody.css `.scr.on { animation: scrIn }`) would run a second, uncancellable animation on top */
-#screens > .scr.on { animation: none; }
+/* one screen at a time; the change is animated by VLFx.transition (JS, ≤ 220 ms, cancellable) */
+.scr { display: none; }
+.scr.on { display: block; }
 /* skip-link target: focus lands on the main column, the next Tab goes to the top bar */
 #content:focus { outline: none; }
 
 :root { --vl-tabbar-h: 64px; --vl-topbar-h: 56px; }
-
-/* legacy screens: see CONVENTION above */
-.scr:not(.vl-redone) {
-  max-width: 520px;
-  margin-inline: auto;
-}
-:root[data-theme="light"] .scr:not(.vl-redone).on {
-  background: var(--void);
-  color: var(--t0);
-  min-height: 100%;
-}
 
 /* ── demo-mode strip ── */
 .vl-demo {
@@ -357,8 +352,7 @@ body {
   .vl-top-title { display: block; }
   .vl-ton-text { position: static; width: auto; height: auto; overflow: visible; clip-path: none; }
   #screens { padding-top: 8px; padding-bottom: 48px; }
-  :root[data-theme="light"] .scr:not(.vl-redone).on { border-radius: var(--r-md); overflow: hidden; }
-  #toast { bottom: 32px; }
+  #toast { bottom: 32px; left: calc(248px + (100% - 248px) / 2); }
 }
 
 /* very narrow phones: drop the unit to keep the top bar on one line */
@@ -369,7 +363,18 @@ body {
 
 /* ── splash: quiet wordmark fade on the theme background (JS adds .out after init, then removes the node
    on transitionend, with a timer fallback) ── */
-#splash { background: var(--bg-glow) no-repeat, var(--bg); }
+#splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-glow) no-repeat, var(--bg);
+  transition: opacity .15s var(--ease);
+}
+#splash.out { opacity: 0; pointer-events: none; }
 .vl-splash-mark {
   font: 700 40px/1 var(--font);
   letter-spacing: -1px;
@@ -386,7 +391,36 @@ body {
 }
 @keyframes vl-splash-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
+/* ── toast: one short status line above the tab bar (JS: textContent + .on for 2.6 s) ── */
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--vl-tabbar-h) + 18px + env(safe-area-inset-bottom, 0px));
+  z-index: 9000;
+  max-width: min(420px, calc(100% - 32px));
+  width: max-content;
+  padding: 11px 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  box-shadow: var(--shadow-2);
+  font: 600 var(--fs-sm)/1.35 var(--font);
+  text-align: center;
+  opacity: 0;
+  visibility: hidden;
+  transform: translate(-50%, 8px);
+  pointer-events: none;
+  transition: opacity .2s var(--ease), transform .2s var(--ease), visibility 0s linear .2s;
+}
+#toast.on {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+  transition: opacity .2s var(--ease), transform .2s var(--ease), visibility 0s;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  #app, #tabbar .nb, #tabbar .nb::before, .nb-fab, .vl-side-link { transition: none; }
+  #app, #tabbar .nb, #tabbar .nb::before, .nb-fab, .vl-side-link, #splash, #toast, #toast.on { transition: none; }
   .vl-splash-mark, .vl-splash-sub { animation: none; }
 }

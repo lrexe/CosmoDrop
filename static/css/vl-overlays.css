@@ -1,5 +1,5 @@
 /* Vloody modal windows: stake, top-up (Stars / TON + TON waiting state), transfer, payout, fairness.
-   Needs vl-tokens.css + vl-base.css (+ .vl-seg / .vl-seg-btn from vl-rounds.css); loaded AFTER the legacy files.
+   Needs vl-tokens.css + vl-base.css (+ .vl-seg / .vl-seg-btn from vl-rounds.css).
 
    Markup (templates/vloody.html):
      .vl-overlay#<id>-modal          — fixed scrim; JS (openOv / closeOv) toggles .on

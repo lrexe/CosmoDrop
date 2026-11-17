@@ -1,6 +1,6 @@
 /* Vloody base components. Needs vl-tokens.css.
-   Coexists with the legacy vloody.css / vloody-app.css: no bare element or * selectors here,
-   every rule targets a new class. Names taken by the legacy files carry the vl- prefix:
+   No bare element or * selectors here (the app reset lives in vl-shell.css), every rule targets a class.
+   Component classes carry the vl- prefix:
    .vl-btn (+ .vl-btn-primary / .vl-btn-ghost / .vl-btn-sm), .vl-chip. */
 
 /* ── page surface: put on <body> (or a wrapper) of new screens ── */
@@ -285,8 +285,8 @@
 }
 
 /* ── reduced motion, page-wide: no movement anywhere, content and state stay.
-   Deliberately global (an exception to «no bare selectors» above): it must also cover the legacy stylesheets
-   and the per-component transitions, and it only shortens timings — end states (open vault, shown list) remain.
+   Deliberately global (an exception to «no bare selectors» above): it must cover every per-component
+   transition, and it only shortens timings — end states (open vault, shown list) remain.
    JS motion (VLFx transition / stagger / countUp / confetti / tilt / lottie, the wheel spin) checks the same query. */
 @media (prefers-reduced-motion: reduce) {
   *,

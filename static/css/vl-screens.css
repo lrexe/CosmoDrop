@@ -1,7 +1,6 @@
 /* Vloody screens: create a round (#sc-create), leaders (#sc-events), profile (#sc-profile).
    Needs vl-tokens.css + vl-base.css (+ .vl-empty / .vl-gift-* from vl-cards.css, .vl-seg / .vl-you from vl-rounds.css);
-   loaded after the legacy files. Every class is vl- prefixed: the legacy vloody.css / vloody-app.css own .cs, .ps,
-   .wallet, .w-*, .lb-*, .pod*, .tx*, .ptab*, .ref-*, .lvl*, .mgi*, .chips, .chip, .mtab*, .inv-*, .gift-tile …
+   every class is vl- prefixed.
    Rendering: vloody.js (loadCreate / renderCreateGifts / renderCreateMode / renderCreateSummary, loadEvents,
    loadProfile / renderInventory / loadTx / loadPayouts / switchPT).
 

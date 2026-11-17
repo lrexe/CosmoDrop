@@ -1,5 +1,5 @@
-/* Vloody home: filters, round cards, gift pictures. Needs vl-tokens.css + vl-base.css; loaded after the legacy files.
-   Every class here is vl- prefixed (the legacy vloody.css owns .gwc*, .badge*, .filters, .ft, .sh …).
+/* Vloody home: filters, round cards, gift pictures. Needs vl-tokens.css + vl-base.css.
+   Every class here is vl- prefixed.
 
    #sc-home.vl-redone   — the home screen (gutter on the phone, full content column on desktop)
    .vl-filters          — chip row (#filters), scrolls sideways on the phone

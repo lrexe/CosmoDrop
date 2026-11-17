@@ -1,6 +1,6 @@
 /* Vloody design tokens.
    Two themes on <html data-theme="dark|light">; plain :root (no attribute) falls back to dark.
-   Names that collide with the legacy stylesheets carry the vl- prefix: --vl-line, --vl-mono.
+   Two names carry the vl- prefix (kept from the move off the old stylesheets): --vl-line, --vl-mono.
    Every text pair is checked by tests/test_contrast.py (WCAG AA 4.5:1) — change a colour, run the test.
 
    Accent: --accent is the LIGHT end and --accent-2 the DARK end of the button gradient

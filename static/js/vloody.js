@@ -6,7 +6,6 @@
   if (tg) { try { tg.ready(); tg.expand(); } catch (e) {} }
   const VL = window.VL || {};
   const $ = (id) => document.getElementById(id);
-  const STAR = '<span class="star-i"></span>';
   const MODE_INFO = { wheel: { name: "Колесо", icon: "i-wheel" }, vault: { name: "Сейф", icon: "i-lock" },
     auction: { name: "Аукцион", icon: "i-eye-off" } };
   const MODE_SCREEN = { wheel: "wheel", vault: "vault", auction: "auction" };
@@ -39,12 +38,6 @@
       if (type === "ok" || type === "error") tg.HapticFeedback.notificationOccurred(type === "ok" ? "success" : "error");
       else tg.HapticFeedback.impactOccurred(type || "light");
     } catch (e) {}
-  }
-  function ripple(e, el) {
-    const d = document.createElement("span"); d.className = "rp-wave";
-    const r = el.getBoundingClientRect(), sz = Math.max(r.width, r.height) * 1.5;
-    d.style.cssText = `width:${sz}px;height:${sz}px;left:${e.clientX - r.left - sz / 2}px;top:${e.clientY - r.top - sz / 2}px`;
-    el.appendChild(d); setTimeout(() => d.remove(), 600);
   }
   function hms(sec) {
     sec = Math.max(0, Math.floor(sec));
@@ -1508,7 +1501,6 @@
   };
 
   document.addEventListener("click", (e) => {
-    const rp = e.target.closest(".rp"); if (rp) ripple(e, rp);
     if (e.target.classList.contains("vl-overlay")) {
       if (ovDownEl === e.target) closeOv(e.target.id); // closeOv сбрасывает и TON-ожидание у пополнения
       return;
@@ -1604,7 +1596,7 @@
     $("app").classList.add("show");
     setTimeout(hideSplash, 1500);
   }
-  // заставка гаснет (opacity, vloody.css) и уходит из DOM: по transitionend или по таймеру, если события не будет
+  // заставка гаснет (opacity, vl-shell.css) и уходит из DOM: по transitionend или по таймеру, если события не будет
   function hideSplash() {
     const sp = $("splash"); if (!sp) return;
     const drop = () => { clearTimeout(sp._t); if (sp.parentNode) sp.remove(); };

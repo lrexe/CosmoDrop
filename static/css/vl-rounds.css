@@ -1,7 +1,6 @@
 /* Vloody round screens: wheel (#sc-wheel), vault (#sc-vault), blind auction (#sc-auction).
-   Needs vl-tokens.css + vl-base.css (+ .vl-pc-hidden from vl-cards.css); loaded after the legacy files.
-   Every class is vl- prefixed (the legacy vloody.css owns .wheel-*, .w-*, .vault-*, .vg-cell, .auc-*, .cd-card,
-   .stakes-card, .stake-row, .winner-card, .fair-card …). Rendering: vloody.js (renderWheel / drawWheel /
+   Needs vl-tokens.css + vl-base.css (+ .vl-pc-hidden from vl-cards.css).
+   Every class is vl- prefixed. Rendering: vloody.js (renderWheel / drawWheel /
    renderVault / renderAuction); state classes are set there.
 
    .vl-rd           — round screen (.scr.vl-redone); .vl-rd-grid — phone: one column (head, cond, main, fair);
