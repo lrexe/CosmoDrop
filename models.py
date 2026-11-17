@@ -412,4 +412,7 @@ def ensure_columns():
         for name, ddl in columns:
             if name not in existing:
                 db.session.execute(db.text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+    # an upgraded DB gets the slug column but not the index the model declares for fresh DBs
+    if inspector.has_table("gift_items"):
+        db.session.execute(db.text("CREATE INDEX IF NOT EXISTS ix_gift_items_slug ON gift_items (slug)"))
     db.session.commit()

@@ -45,6 +45,8 @@ with app.app_context():
 # ---------- доступ
 check("страница /admin открывается и не индексируется",
       c.get("/admin").status_code == 200 and "noindex" in c.get("/admin").headers.get("X-Robots-Tag", ""))
+check("страница /admin — настоящий шаблон: форма входа и vl-tokens.css (а не просто 200)",
+      b'id="login"' in c.get("/admin").data and b"css/vl-tokens.css" in c.get("/admin").data)
 check("страница не содержит секретов", b"admin-s" not in c.get("/admin").data)
 paths = ["stats", "payouts", "pools", "users", f"users/{P1}", "gifts", "revenue"]
 check("все разделы без секрета -> 403", all(c.get("/api/admin/" + p).status_code == 403 for p in paths))

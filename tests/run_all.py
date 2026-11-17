@@ -4,7 +4,7 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SUITES = ["vtest", "tontest", "relaytest", "admintest", "maintest", "test_giftart", "test_contrast"]
+SUITES = ["vtest", "tontest", "relaytest", "admintest", "maintest", "test_giftart", "test_contrast", "test_frontend_ids"]
 
 
 def main():

@@ -15,7 +15,10 @@ from bot import giftart                                        # noqa: E402
 OWNER = 990000300
 ok = True
 JPG = b"\xff\xd8\xff\xe0" + b"J" * 100
-JSON = b'{"v":"5.7","layers":[]}'
+JSON = b'{"v":"5.7","fr":60,"layers":[]}'
+# lottie с числовыми "x" (кривые сглаживания) — легальный; со строкой в "x" — это выражение (исполняется через eval)
+JSON_OK_X = b'{"v":"5.7","fr":30,"layers":[{"ks":{"o":{"k":[{"o":{"x":[0.5],"y":[0]},"t":0}]}}}]}'
+JSON_EXPR = b'{"v":"5.7","fr":30,"layers":[{"ks":{"p":{"a":0,"x":"var $bm_rt = 1;","k":[0,0]}}}]}'
 hits = []
 trap_hits = []
 
@@ -36,7 +39,13 @@ class CDN(BaseHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
-        if "testgift-1." in p:
+        if "testgift-10." in p:
+            body, ctype, code = JSON_OK_X, "application/json", 200
+        elif "testgift-11." in p:
+            body, ctype, code = JSON_EXPR, "application/json", 200
+        elif "testgift-12." in p:
+            body, ctype, code = b"this is not json", "application/json", 200
+        elif "testgift-1." in p:
             body, ctype, code = (JSON, "application/json", 200) if p.endswith(".json") else (JPG, "image/jpeg", 200)
         elif "testgift-3." in p:
             body, ctype, code = b"<html>nope</html>", "text/html", 200
@@ -81,6 +90,12 @@ api_hits = {"gifts": 0, "getfile": 0, "file": 0}
 api_paths = []
 api_mode = {"fail": False}
 THUMBS = {"thumb-A": "thumbnails/file_1.webp", "thumb-B": "stickers/file_2.tgs", "thumb-C": "thumbnails/file_3.webp"}
+# вредоносные file_path от «Telegram»: попадают в каталог только на время отдельной проверки (EXTRA)
+BAD_PATHS = ["../x.webp", "/abs/x.webp", "http://evil.example/x.webp", "a/b?x=1.webp", "x.tgs"]
+EXTRA = {}
+for _i, _bp in enumerate(BAD_PATHS):
+    THUMBS[f"thumb-bad{_i}"] = _bp
+BAD_GIDS = [str(5170000000000000000 + _i) for _i in range(len(BAD_PATHS))]
 
 
 class BotApi(BaseHTTPRequestHandler):
@@ -102,6 +117,9 @@ class BotApi(BaseHTTPRequestHandler):
                                                             "thumbnail": {"file_id": t}}}
                      for g, n, e, t in ((GID_A, 15, "\U0001F9F8", "thumb-A"), (GID_B, 25, "\U0001F339", "thumb-B"),
                                         (GID_C, 50, "\U0001F381", "thumb-C"))]
+            if EXTRA:
+                gifts += [{"id": g, "star_count": 5, "sticker": {"file_id": "x", "emoji": "?", "thumbnail": {"file_id": t}}}
+                          for g, t in EXTRA.items()]
             return self._send(200, json.dumps({"ok": True, "result": {"gifts": gifts}}).encode())
         if "/getFile" in path:
             api_hits["getfile"] += 1
@@ -132,7 +150,7 @@ def hdr():
     return {"X-Telegram-Init-Data": urlencode(fields)}
 
 
-SLUGS = [f"testgift-{i}" for i in (1, 2, 3, 4, 5, 6, 7)]
+SLUGS = [f"testgift-{i}" for i in (1, 2, 3, 4, 5, 6, 7, 10, 11, 12)]
 cache_dir = os.path.join(ROOT, "instance", "gift_cache")
 
 
@@ -145,7 +163,7 @@ def cleanup():
         GiftItem.query.filter(GiftItem.slug.in_(SLUGS)).delete(synchronize_session=False)
         db.session.commit()
     names = [f"{s}.{ext}" for s in SLUGS for ext in ("jpg", "webp", "json")]
-    names += [f"regular-{g}.webp" for g in (GID_A, GID_B, GID_C)]
+    names += [f"regular-{g}.webp" for g in (GID_A, GID_B, GID_C, *BAD_GIDS)]
     for n in names:
         try:
             os.remove(os.path.join(cache_dir, n))
@@ -164,6 +182,20 @@ with app.app_context():
 
 c = app.test_client()
 try:
+    # ---- индекс gift_items.slug (в том числе в «старой» БД, где колонку добавил ensure_columns) ----
+    from models import ensure_columns
+    def slug_idx():
+        with app.app_context():
+            return [i["name"] for i in db.inspect(db.engine).get_indexes("gift_items") if i["column_names"] == ["slug"]]
+    check("gift_items.slug index exists after app start", slug_idx() != [], slug_idx())
+    with app.app_context():
+        for nm in slug_idx():
+            db.session.execute(db.text(f"DROP INDEX {nm}"))
+        db.session.commit()
+    check("(index dropped for the upgrade scenario)", slug_idx() == [])
+    with app.app_context():
+        ensure_columns()
+    check("ensure_columns recreates ix_gift_items_slug on an upgraded DB", "ix_gift_items_slug" in slug_idx(), slug_idx())
     # to_dict
     with app.app_context():
         d = GiftItem.query.filter_by(slug="testgift-1").first().to_dict()
@@ -225,6 +257,29 @@ try:
     r = c.get("/gift-art/testgift-1.json")
     check("ext=json returns application/json", r.status_code == 200 and r.mimetype == "application/json"
           and r.data == JSON, (r.status_code, r.mimetype))
+    # ---- безопасность lottie JSON (выражения исполняются через eval в полной сборке lottie) ----
+    r = c.get("/gift-art/testgift-10.json")
+    check("valid lottie json (numeric x easing handles) -> 200 and cached",
+          r.status_code == 200 and r.mimetype == "application/json" and r.data == JSON_OK_X
+          and os.path.isfile(os.path.join(cache_dir, "testgift-10.json")), r.status_code)
+    r = c.get("/gift-art/testgift-11.json")
+    check("lottie json with an expression string in 'x' -> 404 and not cached",
+          r.status_code == 404 and not os.path.exists(os.path.join(cache_dir, "testgift-11.json")), r.status_code)
+    r = c.get("/gift-art/testgift-12.json")
+    check("non-JSON body with a json content type -> 404 and not cached",
+          r.status_code == 404 and not os.path.exists(os.path.join(cache_dir, "testgift-12.json")), r.status_code)
+    check("_safe_lottie: missing keys, non-object, deep nesting handled",
+          not giftart._safe_lottie(b'{"v":"5","layers":[]}') and not giftart._safe_lottie(b"[1,2]")
+          and giftart._safe_lottie(b'{"v":"5","fr":1,"layers":[]}')
+          and not giftart._safe_lottie(b'{"v":"5","fr":1,"layers":' + b"[" * 100000 + b"]" * 100000 + b"}")
+          and not giftart._safe_lottie(b'{"v":"5","fr":1,"layers":' + b'{"a":' * 3000 + b'{"x":"e"}' + b"}" * 3000 + b"}"))
+    # ---- slug: fullmatch + ASCII ----
+    n = len(hits)
+    codes = [c.get(u).status_code for u in ("/gift-art/testgift-1%0A.jpg", "/gift-art/testgift-%D9%A3.jpg",
+                                            "/gift-art/testgift-1%0A.json")]
+    direct = [giftart.get_art(sl, "jpg") for sl in ("testgift-1\n", "testgift-\u0663", "testgift-\u0663\n")]
+    check("trailing newline / Arabic-Indic digit in slug -> 404 and no outbound request",
+          codes == [404] * 3 and direct == [None] * 3 and len(hits) == n, (codes, direct, len(hits) - n))
     check("get_art direct call", giftart.get_art("testgift-1", "jpg") == (JPG, "image/jpeg")
           and giftart.get_art("../x-1", "jpg") is None and giftart.get_art("testgift-1", "png") is None)
     # ---- обычные подарки за Stars ----
@@ -300,6 +355,22 @@ try:
               res == [] and r.status_code == 200 and r.get_json() == {"items": []}, (res, r.status_code))
     finally:
         api_mode["fail"] = False
+        giftart._cat["at"], giftart._cat["items"] = 0, None
+    # ---- вредоносный file_path из getFile для миниатюр каталога ----
+    EXTRA.update({g: f"thumb-bad{i}" for i, g in enumerate(BAD_GIDS)})
+    giftart._cat["at"], giftart._cat["items"] = 0, None
+    try:
+        n = dict(api_hits)
+        codes = [c.get(f"/gift-art/regular/{g}.webp") for g in BAD_GIDS]
+        check("malicious getFile file_path (../, /abs, http://, ?query, .tgs) -> our 404 json",
+              all(r.status_code == 404 and r.get_json() == {"error": "not found"} for r in codes),
+              [r.status_code for r in codes])
+        check("...getFile was asked for each, but NO file download request was made",
+              api_hits["getfile"] - n["getfile"] == len(BAD_GIDS) and api_hits["file"] == n["file"], api_hits)
+        check("...and nothing cached",
+              not any(os.path.exists(os.path.join(cache_dir, f"regular-{g}.webp")) for g in BAD_GIDS))
+    finally:
+        EXTRA.clear()
         giftart._cat["at"], giftart._cat["items"] = 0, None
 finally:
     cleanup()
