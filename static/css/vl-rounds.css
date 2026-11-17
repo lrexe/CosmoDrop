@@ -804,14 +804,19 @@
 .vl-vt-form .vl-btn,
 .vl-auc-form .vl-btn { flex: none; }
 
-/* number field */
+/* number field. Narrow column (phone): 8 columns of 40px rows (7 below 340px), so 125 numbers take
+   16 rows ≈ 730px instead of 21 × 54px. Cells stay ≥ 36px each way: a dense grid of equal targets with
+   a 5px gap, where a miss lands on a neighbour you can see and the pick is echoed on the door display. */
 .vl-vgrid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 5px;
+}
+@container vlround (max-width: 339px) {
+  .vl-vgrid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
 }
 @container vlround (min-width: 520px) {
-  .vl-vgrid { grid-template-columns: repeat(10, minmax(0, 1fr)); }
+  .vl-vgrid { grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; }
 }
 .vl-vc {
   -webkit-appearance: none;
@@ -823,9 +828,9 @@
   justify-content: center;
   gap: 2px;
   min-width: 0;
-  height: 48px;
+  height: 40px;
   margin: 0;
-  padding: 2px 3px;
+  padding: 2px;
   border: 1px solid var(--vl-line);
   border-radius: 10px;
   background: var(--surface);
@@ -848,10 +853,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.vl-vc.is-mine { border-color: var(--accent-text); }
+.vl-vc.is-mine { border: 2px solid var(--accent-text); } /* thicker edge: not by colour alone */
 .vl-vc.is-mine b,
 .vl-vc.is-mine span { color: var(--accent-text); }
-.vl-vc.is-win { border-color: var(--warn); background: var(--vl-amber-soft); }
+.vl-vc.is-win { border: 2px dashed var(--warn); background: var(--vl-amber-soft); }
 .vl-vc.is-win b,
 .vl-vc.is-win span { color: var(--warn); }
 
@@ -866,8 +871,8 @@
 .vl-vlegend span { display: inline-flex; align-items: center; gap: 6px; }
 .vl-vlegend i { width: 12px; height: 12px; border-radius: 4px; border: 1px solid var(--vl-line); background: var(--surface); }
 .vl-vlegend .vl-vl-taken { background: var(--vl-vc-taken), var(--surface-2); }
-.vl-vlegend .vl-vl-mine { border-color: var(--accent-text); }
-.vl-vlegend .vl-vl-win { border-color: var(--warn); background: var(--vl-amber-soft); }
+.vl-vlegend .vl-vl-mine { border: 2px solid var(--accent-text); }
+.vl-vlegend .vl-vl-win { border: 2px dashed var(--warn); background: var(--vl-amber-soft); }
 
 /* attempts feed */
 .vl-feed-row {

@@ -363,7 +363,9 @@
   .vl-pc:not(.vl-pc-skel):active { transform: scale(.985); }
 }
 
-/* ── featured gift drifts a little (explains «live») ── */
+/* ── featured gift drifts a little (explains «live»; only the one featured live card moves).
+   It costs nothing off-screen: a hidden screen is display:none (its CSS animations are not running) and a
+   background tab paints no frames; with reduced motion it is off (below, same specificity as this rule). ── */
 .vl-pc-feat:not(.vl-pc-skel) .vl-pc-gift { animation: vl-gift-float 6s ease-in-out infinite; }
 @keyframes vl-gift-float { 0%, 100% { translate: 0 0; } 50% { translate: 0 -4px; } }
 
@@ -374,6 +376,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .vl-pc, .vl-pc-sheen, .vl-pc-gift { transition: none; }
-  .vl-pc-feat .vl-pc-gift { animation: none; }
+  .vl-pc-feat:not(.vl-pc-skel) .vl-pc-gift { animation: none; } /* was .vl-pc-feat .vl-pc-gift: lost to the rule above */
   .vl-pc:active { transform: none; }
 }

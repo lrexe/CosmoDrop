@@ -66,6 +66,11 @@ body {
   padding-bottom: calc(var(--vl-tabbar-h) + 24px + env(safe-area-inset-bottom, 0px));
 }
 #screens::-webkit-scrollbar { width: 0; height: 0; }
+/* screen change is animated by VLFx.transition (JS, ≤ 220 ms, cancellable); the legacy CSS entrance
+   (vloody.css `.scr.on { animation: scrIn }`) would run a second, uncancellable animation on top */
+#screens > .scr.on { animation: none; }
+/* skip-link target: focus lands on the main column, the next Tab goes to the top bar */
+#content:focus { outline: none; }
 
 :root { --vl-tabbar-h: 64px; --vl-topbar-h: 56px; }
 
@@ -151,9 +156,17 @@ body {
 .vl-bal-val { font-weight: 700; font-size: var(--fs-sm); color: var(--text); }
 .vl-bal-unit { font-size: var(--fs-xs); color: var(--muted); font-weight: 600; }
 .vl-bal-plus {
+  position: relative;
   min-height: 26px;
   width: 26px;
   margin-left: 2px;
+  border-radius: var(--r-pill);
+}
+/* «Пополнить» is a primary action: 26px to the eye, a 44px hit area around it */
+.vl-bal-plus::after {
+  content: "";
+  position: absolute;
+  inset: -9px;
   border-radius: var(--r-pill);
 }
 .vl-bal-plus .ic { width: 16px; height: 16px; }
@@ -354,7 +367,8 @@ body {
   #topbar { gap: 6px; padding-left: 12px; padding-right: 12px; }
 }
 
-/* ── splash: quiet wordmark fade on the theme background (JS adds .out after init) ── */
+/* ── splash: quiet wordmark fade on the theme background (JS adds .out after init, then removes the node
+   on transitionend, with a timer fallback) ── */
 #splash { background: var(--bg-glow) no-repeat, var(--bg); }
 .vl-splash-mark {
   font: 700 40px/1 var(--font);

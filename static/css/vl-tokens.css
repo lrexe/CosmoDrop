@@ -53,7 +53,8 @@
   --shadow-2: 0 24px 50px -20px rgba(0, 0, 0, .8), 0 0 0 1px rgba(62, 160, 255, .08);
   --shadow-gift: 0 18px 30px -10px rgba(0, 0, 0, .65), 0 0 30px rgba(62, 160, 255, .22);
   --shadow-cta: 0 10px 24px -10px rgba(26, 114, 227, .8), inset 0 1px 0 rgba(255, 255, 255, .22);
-  --focus: 0 0 0 3px rgba(86, 176, 255, .45);
+  --focus-c: rgba(86, 176, 255, .7);
+  --focus: 0 0 0 3px var(--focus-c);
 }
 
 /* ── light · «Лёд» ── */
@@ -83,5 +84,6 @@
   --shadow-2: 0 2px 4px rgba(11, 27, 51, .04), 0 22px 44px -18px rgba(10, 79, 184, .26);
   --shadow-gift: 0 16px 26px -10px rgba(11, 27, 51, .4);
   --shadow-cta: 0 10px 22px -10px rgba(20, 112, 230, .65);
-  --focus: 0 0 0 3px rgba(20, 112, 230, .35);
+  --focus-c: rgba(15, 105, 218, .75);
+  --focus: 0 0 0 3px var(--focus-c);
 }

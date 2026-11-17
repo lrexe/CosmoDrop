@@ -25,13 +25,12 @@
 </head>
 <body>
 {% include "_icons.html" %}
+<a class="vl-skip" href="#content">Перейти к содержимому</a>
 <!-- SPLASH (removed after init) -->
 <div id="splash" aria-hidden="true">
   <div class="vl-splash-mark">Vl<i>oo</i>dy</div>
   <div class="vl-splash-sub">Честные розыгрыши подарков</div>
 </div>
-
-<div id="loader"><div class="ld-gem">💎</div><div class="ld-txt">Загрузка...</div></div>
 
 <div id="app">
 <div id="shell">
@@ -59,7 +58,7 @@
     </div>
   </aside>
 
-  <main id="content">
+  <main id="content" tabindex="-1">
     {% if DEMO_MODE %}<div class="vl-demo" role="note">Демо-режим · VLD и подарки не настоящие</div>{% endif %}
     <!-- TOP BAR -->
     <header id="topbar">
@@ -320,15 +319,17 @@
     <div class="scr vl-redone vl-scr" id="sc-events">
       <div class="vl-ev">
         <div class="vl-ev-main">
-          <div class="vl-seg vl-seg-wide" id="lb-tabs" role="group" aria-label="Период рейтинга">
-            <button type="button" class="vl-seg-btn" data-lb="day" aria-pressed="false">День</button>
-            <button type="button" class="vl-seg-btn" data-lb="week" aria-pressed="false">Неделя</button>
-            <button type="button" class="vl-seg-btn on" data-lb="month" aria-pressed="true">Месяц</button>
-            <button type="button" class="vl-seg-btn" data-lb="all" aria-pressed="false">Всё время</button>
+          <div class="vl-seg vl-seg-wide" id="lb-tabs" role="tablist" aria-label="Период рейтинга">
+            <button type="button" class="vl-seg-btn" role="tab" id="lbt-day" data-lb="day" aria-selected="false" aria-controls="lb-panel" tabindex="-1">День</button>
+            <button type="button" class="vl-seg-btn" role="tab" id="lbt-week" data-lb="week" aria-selected="false" aria-controls="lb-panel" tabindex="-1">Неделя</button>
+            <button type="button" class="vl-seg-btn on" role="tab" id="lbt-month" data-lb="month" aria-selected="true" aria-controls="lb-panel" tabindex="0">Месяц</button>
+            <button type="button" class="vl-seg-btn" role="tab" id="lbt-all" data-lb="all" aria-selected="false" aria-controls="lb-panel" tabindex="-1">Всё время</button>
           </div>
-          <div class="card vl-ev-me" id="lb-banner" aria-live="polite"><span class="skeleton vl-sk-line" style="width:60%"></span></div>
-          <ol class="vl-pod" id="lb-podium" aria-label="Тройка лидеров"></ol>
-          <ol class="vl-lb" id="lb-list" aria-label="Рейтинг по обороту ставок"></ol>
+          <div class="vl-ev-panel" id="lb-panel" role="tabpanel" aria-labelledby="lbt-month">
+            <div class="card vl-ev-me" id="lb-banner" aria-live="polite"><span class="skeleton vl-sk-line" style="width:60%"></span></div>
+            <ol class="vl-pod" id="lb-podium" aria-label="Тройка лидеров"></ol>
+            <ol class="vl-lb" id="lb-list" aria-label="Рейтинг по обороту ставок"></ol>
+          </div>
         </div>
         <aside class="vl-ev-side" aria-labelledby="ev-win-h">
           <h2 class="vl-sc-h" id="ev-win-h">Последние победители</h2>
@@ -462,22 +463,22 @@
                 <button type="button" class="vl-pf-act" data-act="payout-open"><span class="vl-pf-act-ic"><svg class="ic" aria-hidden="true"><use href="#i-out"/></svg></span>Вывести</button>
               </div>
             </section>
-            <section class="vl-pf-panel vl-pf-inv on" id="ptc-inv" aria-labelledby="pf-inv-h">
+            <section class="vl-pf-panel vl-pf-inv on" id="ptc-inv" role="tabpanel" aria-labelledby="pt-inv">
               <h2 class="vl-sc-h vl-pf-inv-h" id="pf-inv-h">Инвентарь</h2>
               <div id="pf-inv-body"></div>
             </section>
           </div>
 
           <div class="vl-pf-col">
-            <div class="vl-seg vl-seg-wide vl-pf-tabs" id="ptabs" role="group" aria-label="Разделы профиля">
-              <button type="button" class="vl-seg-btn on vl-pf-tab-inv" data-pt="inv" aria-pressed="true">Инвентарь</button>
-              <button type="button" class="vl-seg-btn" data-pt="tx" aria-pressed="false">Транзакции</button>
-              <button type="button" class="vl-seg-btn" data-pt="wd" aria-pressed="false">Выводы</button>
-              <button type="button" class="vl-seg-btn" data-pt="ch" aria-pressed="false">Каналы</button>
+            <div class="vl-seg vl-seg-wide vl-pf-tabs" id="ptabs" role="tablist" aria-label="Разделы профиля">
+              <button type="button" class="vl-seg-btn on vl-pf-tab-inv" role="tab" id="pt-inv" data-pt="inv" aria-selected="true" aria-controls="ptc-inv" tabindex="0">Инвентарь</button>
+              <button type="button" class="vl-seg-btn" role="tab" id="pt-tx" data-pt="tx" aria-selected="false" aria-controls="ptc-tx" tabindex="-1">Транзакции</button>
+              <button type="button" class="vl-seg-btn" role="tab" id="pt-wd" data-pt="wd" aria-selected="false" aria-controls="ptc-wd" tabindex="-1">Выводы</button>
+              <button type="button" class="vl-seg-btn" role="tab" id="pt-ch" data-pt="ch" aria-selected="false" aria-controls="ptc-ch" tabindex="-1">Каналы</button>
             </div>
-            <section class="vl-pf-panel" id="ptc-tx" aria-label="Транзакции"></section>
-            <section class="vl-pf-panel" id="ptc-wd" aria-label="Выводы"></section>
-            <section class="vl-pf-panel" id="ptc-ch" aria-label="Каналы">
+            <section class="vl-pf-panel" id="ptc-tx" role="tabpanel" aria-labelledby="pt-tx"></section>
+            <section class="vl-pf-panel" id="ptc-wd" role="tabpanel" aria-labelledby="pt-wd"></section>
+            <section class="vl-pf-panel" id="ptc-ch" role="tabpanel" aria-labelledby="pt-ch">
               <div class="card vl-pf-note">
                 <div class="vl-pf-note-t">Привязать канал</div>
                 <p class="vl-pf-note-s">Розыгрыши для подписчиков твоего канала — в разработке. Привязанных каналов пока нет.</p>
@@ -646,7 +647,7 @@
         <label class="vl-dlg-label" for="tr-amount">Сумма (VLD)</label>
         <input class="input num" id="tr-amount" type="number" inputmode="numeric" placeholder="150" autocomplete="off">
       </div>
-      <p class="vl-dlg-alert" id="tr-warn" aria-live="polite"></p>
+      <p class="vl-dlg-alert" id="tr-warn" role="alert"></p>
       <dl class="vl-dlg-sum">
         <div class="vl-dlg-sum-row"><dt>Спишется с вас</dt><dd><span class="num" id="tr-calc-gross">0</span> VLD</dd></div>
         <div class="vl-dlg-sum-row"><dt id="tr-fee-label">Комиссия перевода</dt><dd class="is-neg"><span class="num" id="tr-calc-fee">−0</span> VLD</dd></div>
@@ -678,7 +679,7 @@
         <label class="vl-dlg-label" for="po-amount">Сумма к списанию (VLD)</label>
         <input class="input num" id="po-amount" type="number" inputmode="numeric" placeholder="100" autocomplete="off">
       </div>
-      <p class="vl-dlg-alert" id="po-warn" aria-live="polite"></p>
+      <p class="vl-dlg-alert" id="po-warn" role="alert"></p>
       <dl class="vl-dlg-sum">
         <div class="vl-dlg-sum-row"><dt id="po-fee-label">Комиссия вывода</dt><dd class="num is-neg" id="po-calc-fee">−0</dd></div>
         <div class="vl-dlg-sum-row is-total"><dt>Придёт</dt><dd class="num" id="po-calc-net">0</dd></div>

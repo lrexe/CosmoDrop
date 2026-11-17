@@ -72,9 +72,8 @@
 
   function setBalance(v) {
     if (state.profile) state.profile.balance = v;
-    $("tb-stars-val").textContent = fmt(v);
-    $("sb-stars-val").textContent = fmt(v);
-    $("pf-bal").textContent = fmt(v);
+    // the balance «rolls» to the new value (VLFx.countUp: instant with reduced motion or in a hidden tab)
+    ["tb-stars-val", "sb-stars-val", "pf-bal"].forEach((id) => VLFx.countUp($(id), v));
   }
 
   // ------------------------------------------------------------------ навигация
@@ -88,9 +87,12 @@
       if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
     });
   }
+  // exactly one .scr.on at the end; the entrance (≤ 220 ms shift + fade) is VLFx.transition's, and a quick second
+  // call cancels the first one, so rapid tab clicks never leave two screens or a half-faded one
   function show(screen) {
-    document.querySelectorAll(".scr").forEach((s) => s.classList.remove("on"));
-    $("sc-" + screen).classList.add("on");
+    const to = $("sc-" + screen), from = document.querySelector("#screens > .scr.on");
+    document.querySelectorAll(".scr.on").forEach((s) => { if (s !== to && s !== from) s.classList.remove("on"); });
+    VLFx.transition(from || to, to);
     $("screens").scrollTop = 0;
     $("vl-title").textContent = SCREEN_TITLE[screen] || "Vloody";
   }
@@ -156,7 +158,12 @@
     // кнопку могли перерисовать, пока окно было открыто, — ищем такую же
     if (back && !back.isConnected && ov._openerAct) back = document.querySelector(`[data-act="${CSS.escape(ov._openerAct)}"]`);
     ov._opener = null;
-    if (ovStack.length) { ovDialog(ovStack[ovStack.length - 1]).focus({ preventScroll: true }); return; }
+    if (ovStack.length) { // a stacked window closed: back to the control inside the lower window that opened it
+      const lower = ovDialog(ovStack[ovStack.length - 1]);
+      if (back && back.isConnected && lower.contains(back) && back.getClientRects().length) back.focus({ preventScroll: true });
+      else lower.focus({ preventScroll: true });
+      return;
+    }
     document.removeEventListener("keydown", ovKey);
     $("app").inert = false;
     document.documentElement.classList.remove("vl-ov-lock");
@@ -232,7 +239,8 @@
         ${bar == null ? "" : `<div class="vl-pc-bar" aria-hidden="true"><i style="width:${Math.min(100, bar).toFixed(0)}%"></i></div>`}
         <div class="vl-pc-foot">
           <div class="vl-pc-meta">${metas}</div>
-          <button type="button" class="vl-btn vl-btn-sm ${live ? "vl-btn-primary" : "vl-btn-ghost"} vl-pc-go" data-pool="${p.id}">${live ? "Перейти" : "Результат"}</button>
+          <button type="button" class="vl-btn vl-btn-sm ${live ? "vl-btn-primary" : "vl-btn-ghost"} vl-pc-go" data-pool="${p.id}"
+            aria-label="${live ? "Перейти" : "Результат"}: ${esc(p.title)}">${live ? "Перейти" : "Результат"}</button>
           <button type="button" class="vl-btn vl-btn-ghost vl-btn-sm vl-btn-icon vl-pc-share" data-share="${p.id}"
             aria-label="Скопировать ссылку на раунд" title="Скопировать ссылку">${icon("i-share")}</button>
         </div>
@@ -370,6 +378,12 @@
     return `<h3 class="vl-fair-h">${icon("i-shield")}Проверка честности</h3>${rows}`
       + (note ? `<p class="vl-fair-note">${note}</p>` : "")
       + `<button type="button" class="vl-fair-more" data-act="fair-info">Как это устроено</button>`;
+  }
+
+  // банк раунда: при открытии — сразу итог, при обновлении (новые ставки) — «докручивается»
+  function setBank(el, v) {
+    if (state.poolFresh) { el.textContent = fmt(v); return; }
+    VLFx.countUp(el, v);
   }
 
   function showWinner(box, title, sub) {
@@ -528,7 +542,8 @@
       ctx.rotate(Math.sin(ma) > 0 ? ma - Math.PI / 2 : ma + Math.PI / 2); // в нижней половине — не вверх ногами
       ctx.globalAlpha = fin && slot !== "win" ? 0.55 : 1;
       if (state.wheelMode === "av") {
-        ctx.font = `${fs}px ${EMOJI_FONT}`; ctx.fillStyle = "#000";
+        ctx.font = `${fs}px ${EMOJI_FONT}`;
+        ctx.fillStyle = slot === "win" ? P.winInk : slot === "me" ? P.meInk : P.ink; // monochrome glyph fallback
         ctx.fillText(s.avatar, 0, 0);
       } else {
         ctx.font = `700 ${Math.round(fs * 0.66)}px "JetBrains Mono", monospace`;
@@ -560,7 +575,7 @@
     const finish = () => { ptr.style.transform = ""; scr.classList.remove("is-spinning"); state.spinning = false; };
     (function fr(now) {
       if (state.pool !== p) return finish();
-      const t = Math.min((now - st) / dur, 1), rot = from + (target - from) * ease(t), dt = Math.max(1, now - lastT);
+      const t = reducedMotion() ? 1 : Math.min((now - st) / dur, 1), rot = from + (target - from) * ease(t), dt = Math.max(1, now - lastT);
       // стрелка: удар при каждой пройденной границе, сила — от скорости, затем пружинит обратно
       const b = WheelMath.borderCount(p.stakes, rot);
       if (lastBorder !== null && b !== lastBorder) ptrDeg = Math.max(-28, ptrDeg - Math.min(24, 7 + (rot - lastRot) / dt * 420));
@@ -573,6 +588,7 @@
       finish();
       renderWheel(false);
       haptic(p.winner && p.winner.is_me ? "ok" : "medium");
+      if (p.winner && p.winner.is_me) VLFx.confetti("win");
     })(st);
   }
 
@@ -584,7 +600,7 @@
     $("det-name").textContent = p.title; $("det-org").textContent = p.organizer;
     setStatus($("det-status"), p);
     $("det-min").textContent = fmt(p.min_stake);
-    $("det-bank").textContent = fmt(p.bank);
+    setBank($("det-bank"), p.bank);
     $("det-part").textContent = fmt(p.participants);
     $("det-mine").textContent = fmt(p.my_total);
     $("det-chance").textContent = fmtPct(p.my_chance);
@@ -658,7 +674,7 @@
     $("vt-name").textContent = p.title; $("vt-org").textContent = p.organizer;
     setStatus($("vt-status"), p);
     $("vt-min").textContent = fmt(p.min_stake);
-    $("vt-bank").textContent = fmt(p.bank);
+    setBank($("vt-bank"), p.bank);
     $("vt-part").textContent = fmt(p.participants);
     $("vt-taken").textContent = `${fmt(p.taken)} / ${fmt(p.vault_max)}`;
     $("vt-hint").innerHTML = live
@@ -722,7 +738,7 @@
       const r = await api(`/api/pools/${p.id}/vault`, { number: num });
       setBalance(r.balance);
       $("vt-num").value = "";
-      if (r.hit) { haptic("ok"); toast("Сейф вскрыт — подарок твой"); }
+      if (r.hit) { haptic("ok"); toast("Сейф вскрыт — подарок твой"); VLFx.confetti("jackpot"); }
       else { haptic("error"); toast(`Число ${num} — мимо`); }
       applyPool(r.pool, false);
       if (!r.hit) { // промах: дверь вздрагивает, табло на мгновение показывает неверный код
@@ -736,6 +752,7 @@
   }
 
   // ---------------------------------------------------------------- аукцион
+  const aucRevealed = new Set(); // id завершённых раундов, раскрытие которых уже показали в этой сессии
   function renderAuction(animate) {
     const p = state.pool, live = p.status === "live", fin = p.status === "finished";
     mountGift($("auc-gift"), p, "vl-rd-pic", true);
@@ -770,8 +787,11 @@
           </li>`).join("")}</ol>`;
     } else board.innerHTML = `<p class="vl-auc-empty">Раунд отменён — ставок не было.</p>`;
 
-    // раскрытие: шторка уезжает вверх, ставки появляются по одной (при открытии раунда и в момент завершения)
-    if ((state.poolFresh || animate) && !reducedMotion()) {
+    // раскрытие: шторка уезжает вверх, ставки появляются по одной — в момент завершения или при первом
+    // просмотре этого завершённого раунда за сессию (дальше открывается сразу открытым)
+    const reveal = animate || (state.poolFresh && !aucRevealed.has(p.id));
+    aucRevealed.add(p.id);
+    if (reveal && !reducedMotion()) {
       stage.classList.add("vl-noanim"); shut.classList.remove("is-open");
       void stage.offsetWidth;
       stage.classList.remove("vl-noanim");
@@ -781,6 +801,7 @@
         el.animate([{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }],
           { duration: 320, delay: 620 + Math.min(i, 12) * 160, easing: "cubic-bezier(.2,.7,.2,1)", fill: "backwards" });
       });
+      if (animate && p.winner && p.winner.is_me) setTimeout(() => VLFx.confetti("win"), 700); // после шторки
     } else shut.classList.add("is-open");
   }
 
@@ -836,6 +857,34 @@
     } catch (e) { toast(e.message); }
   }
 
+  // ---------------------------------------------------------------- вкладки (role="tablist")
+  // Выбранная вкладка: .on + aria-selected="true" + tabindex=0, остальные tabindex=-1 (одна точка Tab на список);
+  // стрелки ←/→, Home/End переводят фокус и сразу выбирают вкладку. Скрытые вкладки (инвентарь на десктопе) пропускаются.
+  function selectTab(list, isOn) {
+    list.querySelectorAll('[role="tab"]').forEach((b) => {
+      const on = !!isOn(b);
+      b.classList.toggle("on", on);
+      b.setAttribute("aria-selected", String(on));
+      b.tabIndex = on ? 0 : -1;
+    });
+  }
+  function tabKeys(list, pick) {
+    list.addEventListener("keydown", (e) => {
+      const tabs = Array.from(list.querySelectorAll('[role="tab"]')).filter((b) => b.getClientRects().length);
+      const i = tabs.indexOf(document.activeElement);
+      if (i < 0) return;
+      let n = -1;
+      if (e.key === "ArrowRight") n = (i + 1) % tabs.length;
+      else if (e.key === "ArrowLeft") n = (i - 1 + tabs.length) % tabs.length;
+      else if (e.key === "Home") n = 0;
+      else if (e.key === "End") n = tabs.length - 1;
+      if (n < 0) return;
+      e.preventDefault();
+      tabs[n].focus();
+      pick(tabs[n]);
+    });
+  }
+
   // ================================================================== ЛИДЕРЫ
   // Разметка — templates/vloody.html (#sc-events), стили — static/css/vl-screens.css.
   const plural = (n, f) => {
@@ -843,6 +892,13 @@
     return f[a > 10 && a < 20 ? 2 : b === 1 ? 0 : b >= 2 && b <= 4 ? 1 : 2];
   };
   const vld = (n) => `<span class="num">${fmt(n)}</span><small>VLD</small>`;
+
+  function switchLB(period) {
+    state.lb = period;
+    selectTab($("lb-tabs"), (b) => b.dataset.lb === period);
+    $("lb-panel").setAttribute("aria-labelledby", "lbt-" + period);
+    return loadEvents();
+  }
 
   async function loadEvents() {
     try {
@@ -896,7 +952,7 @@
           <span class="vl-wf-bank">${vld(w.bank)}</span>
         </button></li>`).join("")
         : `<li class="vl-ev-empty">${emptyState("i-clock", "Победителей пока нет")}</li>`;
-      VLFx.stagger($("lb-podium")); VLFx.stagger($("lb-list"));
+      VLFx.stagger($("lb-podium")); VLFx.stagger($("lb-list")); VLFx.stagger($("winners-list"));
     } catch (e) { toast(e.message); }
   }
 
@@ -1052,6 +1108,8 @@
     syncThemeSeg();
     if (full) {
       if (isDesk() && state.pt === "inv") switchPT("tx");
+      else if (state.pt === "tx") loadTx();       // открытая вкладка списков — свежие данные при каждом входе
+      else if (state.pt === "wd") loadPayouts();
       await loadGifts(); renderInventory();
     }
   }
@@ -1072,8 +1130,10 @@
     }
     const tiles = state.gifts.map((g) => {
       const held = g.status === "held", fee = +g.transfer_fee || 0;
+      // комиссия видна только там, где её правда спишут: свободный подарок и комиссия > 0
       const label = g.status === "withdraw_requested" ? `${icon("i-clock")}<span>Заявка отправлена</span>`
-        : `${icon("i-out")}<span>Вывести</span><span class="vl-inv-fee"><span class="num">${fmt(fee)}</span> VLD</span>`;
+        : `${icon("i-out")}<span>Вывести</span>${held && fee > 0
+          ? `<span class="vl-inv-fee"><span class="num">${fmt(fee)}</span> VLD</span>` : ""}`;
       return `<li class="card vl-inv-tile">
         <span class="vl-inv-pic">${giftImg(giftArt(g), "vl-inv-img")}</span>
         <span class="vl-inv-n" title="${esc(g.name)}">${esc(g.name)}</span>
@@ -1101,6 +1161,7 @@
           <span class="vl-tx-id"><span class="vl-tx-n">${esc(t.title)}</span><span class="vl-tx-s">${ago(t.ts)}</span></span>
           <span class="vl-tx-v num ${t.amount >= 0 ? "is-pos" : "is-neg"}">${t.amount >= 0 ? "+" : "−"}${fmt(Math.abs(t.amount))}</span>
         </li>`).join("")}</ul>` : listEmpty("i-wallet", "Операций пока нет");
+      VLFx.stagger(box.querySelector(".vl-txl"));
     } catch (e) { box.innerHTML = listEmpty("i-close", esc(e.message)); }
   }
 
@@ -1121,15 +1182,13 @@
           <span class="vl-tx-r"><span class="vl-tx-v num">${r.method === "TON" ? r.net_ton.toFixed(2) + " TON" : fmt(r.net) + " Stars"}</span>
             <span class="vl-tx-s">списано <span class="num">${fmt(r.amount)}</span> VLD</span></span>
         </li>`).join("")}</ul><div class="vl-pf-more">${btn}</div>` : listEmpty("i-out", "Заявок на вывод нет", btn);
+      VLFx.stagger(box.querySelector(".vl-txl"));
     } catch (e) { box.innerHTML = listEmpty("i-close", esc(e.message)); }
   }
 
   function switchPT(t) {
     state.pt = t;
-    document.querySelectorAll("#ptabs [data-pt]").forEach((b) => {
-      const on = b.dataset.pt === t;
-      b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on));
-    });
+    selectTab($("ptabs"), (b) => b.dataset.pt === t);
     document.querySelectorAll("#sc-profile .vl-pf-panel").forEach((c) => c.classList.toggle("on", c.id === "ptc-" + t));
     if (t === "tx") loadTx();
     if (t === "wd") loadPayouts();
@@ -1299,6 +1358,13 @@
     catch (e) { toast(e.message); }
   }
 
+  // предупреждение в окне (role="alert"): показываем блок, затем меняем текст — и только если он новый,
+  // иначе экранный диктор повторял бы его на каждое нажатие клавиши
+  function setAlert(w, msg) {
+    w.classList.toggle("on", !!msg);
+    if (w.textContent !== msg) w.textContent = msg;
+  }
+
   // ---------------------------------------------------------------- перевод
   let lookupTimer = 0, recipientOk = false;
   function transferOpen() {
@@ -1317,7 +1383,7 @@
     let msg = "";
     if (amt && amt < L.transfer_min) msg = `Минимальная сумма перевода — ${L.transfer_min} VLD`;
     else if (amt > state.profile.balance) msg = "Недостаточно VLD на балансе";
-    w.textContent = msg; w.classList.toggle("on", !!msg);
+    setAlert(w, msg);
     $("tr-submit-btn").disabled = !(recipientOk && amt >= L.transfer_min && amt <= state.profile.balance);
   }
   function transferLookup() {
@@ -1376,7 +1442,7 @@
     if (amt && amt < L.payout_min) msg = `Минимальный вывод — ${L.payout_min} VLD`;
     else if (amt > state.profile.balance) msg = "Недостаточно VLD на балансе";
     else if (dest && !destOk) msg = "Проверь адрес TON-кошелька";
-    const w = $("po-warn"); w.textContent = msg; w.classList.toggle("on", !!msg);
+    setAlert($("po-warn"), msg);
     $("po-submit-btn").disabled = !(amt >= L.payout_min && amt <= state.profile.balance && destOk);
   }
   async function payoutConfirm() {
@@ -1458,7 +1524,11 @@
     if ((el = t("[data-tab]"))) return tab(el.dataset.tab);
     // share first: on the home cards the share button sits inside the clickable card ([data-pool])
     if ((el = t("[data-share]"))) return sharePool(+el.dataset.share);
-    if ((el = t("[data-pool]"))) return openPool(+el.dataset.pool);
+    if ((el = t("[data-pool]"))) {
+      // the whole card is clickable, but not when the click ends a text selection inside it (copying a name)
+      if (!e.target.closest("button") && window.getSelection && String(window.getSelection()).trim()) return;
+      return openPool(+el.dataset.pool);
+    }
     if ((el = t("[data-flt]"))) {
       state.filter = el.dataset.flt;
       document.querySelectorAll("#filters [data-flt]").forEach((b) => {
@@ -1473,13 +1543,7 @@
       });
       return drawWheel(state.wheelRot);
     }
-    if ((el = t("[data-lb]"))) {
-      state.lb = el.dataset.lb;
-      document.querySelectorAll("#lb-tabs [data-lb]").forEach((b) => {
-        b.classList.toggle("on", b === el); b.setAttribute("aria-pressed", String(b === el));
-      });
-      return loadEvents();
-    }
+    if ((el = t("[data-lb]"))) return switchLB(el.dataset.lb);
     if ((el = t("[data-cmode]"))) { state.create.mode = el.dataset.cmode; return renderCreateMode(); }
     if ((el = t("[data-gift]"))) { state.create.gift = +el.dataset.gift; renderCreateGifts(); return renderCreateSummary(); }
     if ((el = t("[data-gift-wd]"))) return giftWithdraw(+el.dataset.giftWd);
@@ -1504,6 +1568,9 @@
   });
   document.addEventListener("pointerdown", (e) => { ovDownEl = e.target; });
   document.addEventListener("input", (e) => { if (e.target.classList && e.target.classList.contains("vl-range")) rangeFill(e.target); });
+
+  tabKeys($("ptabs"), (b) => switchPT(b.dataset.pt));
+  tabKeys($("lb-tabs"), (b) => switchLB(b.dataset.lb));
 
   $("sm-slider").addEventListener("input", (e) => { $("sm-input").value = ""; stakeSync(+e.target.value); });
   $("sm-input").addEventListener("input", (e) => stakeSync(parseInt(e.target.value, 10) || 0));
@@ -1535,7 +1602,15 @@
       if (start.startsWith("pool_")) openPool(parseInt(start.slice(5), 10));
     } catch (e) { toast("Не удалось загрузить данные"); }
     $("app").classList.add("show");
-    setTimeout(() => $("splash").classList.add("out"), 1500);
+    setTimeout(hideSplash, 1500);
+  }
+  // заставка гаснет (opacity, vloody.css) и уходит из DOM: по transitionend или по таймеру, если события не будет
+  function hideSplash() {
+    const sp = $("splash"); if (!sp) return;
+    const drop = () => { clearTimeout(sp._t); if (sp.parentNode) sp.remove(); };
+    sp.addEventListener("transitionend", drop, { once: true });
+    sp._t = setTimeout(drop, 600);
+    sp.classList.add("out");
   }
   init();
 })();
