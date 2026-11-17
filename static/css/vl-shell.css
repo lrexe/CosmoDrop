@@ -1,0 +1,378 @@
+/* Vloody application shell: sidebar (desktop), bottom tab bar (phone), top bar, splash.
+   Needs vl-tokens.css + vl-base.css; loaded AFTER the legacy vloody.css / vloody-app.css.
+
+   Structure (templates/vloody.html):
+     #app (JS adds .show in init())
+       #shell
+         aside#sidebar   — desktop only: wordmark, nav, balance card, theme switch
+         main#content    — .vl-demo (demo mode), header#topbar, #screens (the scroller; JS resets its scrollTop)
+         nav#tabbar      — phone only: 5 items, raised «Создать» in the middle (.nb-ctr)
+   Nav items carry data-tab / data-act; JS marks the current one with .on + aria-current="page".
+
+   Layout, CSS only (no matchMedia): phone ≤ 860px (mobile-first base rules), desktop ≥ 861px.
+   The page itself never scrolls: html/body are fixed to the viewport and #screens scrolls, on the phone
+   between the top bar and the fixed tab bar, on desktop inside the main column next to the fixed sidebar.
+
+   CONVENTION for the redesign (Tasks 7+): screens that are not redesigned yet keep the legacy styles and are
+   capped by `.scr:not(.vl-redone)` (max-width 520px, centred; on light theme they sit on a dark legacy panel
+   so the legacy light-on-dark text stays readable). A task that redesigns a screen adds the class `vl-redone`
+   to its `div.scr` and gets the full content column (up to 1180px) and the theme tokens. */
+
+/* ── page ── */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+body {
+  margin: 0;
+  background: var(--bg-glow) no-repeat, var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs-md);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  height: 100%;
+  opacity: 0;
+  transition: opacity .3s var(--ease);
+}
+#app.show { opacity: 1; }
+
+#shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+#content {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#screens {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  /* room for the fixed tab bar + safe area */
+  padding-bottom: calc(var(--vl-tabbar-h) + 24px + env(safe-area-inset-bottom, 0px));
+}
+#screens::-webkit-scrollbar { width: 0; height: 0; }
+
+:root { --vl-tabbar-h: 64px; --vl-topbar-h: 56px; }
+
+/* legacy screens: see CONVENTION above */
+.scr:not(.vl-redone) {
+  max-width: 520px;
+  margin-inline: auto;
+}
+:root[data-theme="light"] .scr:not(.vl-redone).on {
+  background: var(--void);
+  color: var(--t0);
+  min-height: 100%;
+}
+
+/* ── demo-mode strip ── */
+.vl-demo {
+  flex: none;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--vl-line);
+  background: var(--surface);
+  color: var(--warn);
+  font: 600 11px/1.3 var(--vl-mono);
+  letter-spacing: .04em;
+  text-align: center;
+}
+
+/* ── wordmark ── */
+.vl-logo {
+  font: 700 20px/1 var(--font);
+  letter-spacing: -.5px;
+  color: var(--text);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.vl-logo i { font-style: normal; color: var(--accent-text); }
+
+/* ── top bar ── */
+#topbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--vl-topbar-h);
+  padding: 8px 16px;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--vl-line);
+  background: var(--bg);
+  position: relative;
+  z-index: 100;
+}
+.vl-top-title {
+  display: none; /* desktop only */
+  margin: 0;
+  font: 700 var(--fs-xl)/1.2 var(--font);
+  letter-spacing: -.3px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vl-top-spacer { flex: 1; min-width: 0; }
+.vl-top-btn { color: var(--muted); }
+.vl-top-btn:focus-visible,
+.vl-top-btn:hover { color: var(--text); }
+.vl-ton-text { /* phone: icon only, the label stays for screen readers */
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+.vl-ton .ic { color: var(--accent-text); }
+
+.vl-bal {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 4px 0 12px;
+  box-sizing: border-box;
+  border: 1px solid var(--vl-line);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  white-space: nowrap;
+}
+.vl-bal > .ic { width: 16px; height: 16px; color: var(--accent-text); }
+.vl-bal-val { font-weight: 700; font-size: var(--fs-sm); color: var(--text); }
+.vl-bal-unit { font-size: var(--fs-xs); color: var(--muted); font-weight: 600; }
+.vl-bal-plus {
+  min-height: 26px;
+  width: 26px;
+  margin-left: 2px;
+  border-radius: var(--r-pill);
+}
+.vl-bal-plus .ic { width: 16px; height: 16px; }
+
+/* ── phone tab bar ── */
+#tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  display: flex;
+  align-items: stretch;
+  height: calc(var(--vl-tabbar-h) + env(safe-area-inset-bottom, 0px));
+  padding: 0 6px env(safe-area-inset-bottom, 0px);
+  box-sizing: border-box;
+  border-top: 1px solid var(--vl-line);
+  background: var(--surface);
+}
+#tabbar .nb,
+#tabbar .nb-ctr {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 6px 2px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--muted);
+  font: 600 11px/1.1 var(--font);
+  cursor: pointer;
+  transition: color var(--dur) var(--ease);
+}
+#tabbar .nb .ic { width: 22px; height: 22px; }
+#tabbar .nb.on,
+#tabbar .nb-ctr.on { color: var(--accent-text); }
+/* active indicator: short bar at the top edge, no glow */
+#tabbar .nb::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 20px;
+  height: 3px;
+  margin-left: -10px;
+  border-radius: 0 0 3px 3px;
+  background: var(--accent-text);
+  transform: scaleX(0);
+  transition: transform var(--dur) var(--ease);
+}
+#tabbar .nb.on::before { transform: scaleX(1); }
+#tabbar .nb:focus-visible,
+#tabbar .nb-ctr:focus-visible { outline: none; box-shadow: var(--focus); }
+
+.nb-fab {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  margin-top: -22px;
+  border-radius: 16px;
+  background: var(--accent-grad);
+  color: var(--on-accent);
+  box-shadow: var(--shadow-cta);
+  transition: transform var(--dur) var(--ease);
+}
+.nb-fab .ic { width: 24px; height: 24px; }
+#tabbar .nb-ctr:active .nb-fab { transform: scale(.94); }
+#tabbar .nb-ctr.on .nb-fab { box-shadow: var(--shadow-cta), 0 0 0 2px var(--surface), 0 0 0 4px var(--accent-text); }
+
+/* ── desktop sidebar ── */
+#sidebar { display: none; }
+
+.vl-side-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 28px;
+}
+.vl-side-link {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 12px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--muted);
+  font: 600 var(--fs-md)/1.2 var(--font);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.vl-side-link.on {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.vl-side-link.on .ic { color: var(--accent-text); }
+/* active indicator: bar on the left edge */
+.vl-side-link.on::before {
+  content: "";
+  position: absolute;
+  left: -16px;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent-text);
+}
+.vl-side-link:focus-visible { outline: none; box-shadow: var(--focus); }
+.vl-side-sep { height: 1px; margin: 12px 4px; background: var(--vl-line); }
+
+.vl-side-foot {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.vl-side-bal { padding: 14px; }
+.vl-side-bal-lbl { font-size: var(--fs-xs); color: var(--muted); font-weight: 600; }
+.vl-side-bal-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 4px 0 12px;
+  white-space: nowrap;
+}
+.vl-side-bal-row .ic { width: 18px; height: 18px; color: var(--accent-text); align-self: center; }
+.vl-side-bal-val { font-size: var(--fs-xl); font-weight: 700; color: var(--text); }
+.vl-side-bal-unit { font-size: var(--fs-sm); color: var(--muted); font-weight: 600; }
+.vl-side-theme { justify-content: flex-start; color: var(--muted); }
+.vl-side-theme .ic { width: 18px; height: 18px; }
+
+@media (hover: hover) and (pointer: fine) {
+  #tabbar .nb:not(.on):hover { color: var(--text); }
+  .vl-side-link:not(.on):hover { background: var(--surface-2); color: var(--text); }
+  .vl-side-theme:hover { color: var(--text); }
+}
+
+/* ── desktop ≥ 861px ── */
+@media (min-width: 861px) {
+  #shell {
+    display: grid;
+    grid-template-columns: 248px minmax(0, 1fr);
+    grid-template-rows: 100%;
+  }
+  #tabbar { display: none; }
+
+  #sidebar {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow-y: auto;
+    padding: 22px 16px 18px;
+    box-sizing: border-box;
+    border-right: 1px solid var(--vl-line);
+    background: var(--surface);
+  }
+  #sidebar .vl-logo { padding: 4px 12px 0; font-size: 22px; }
+
+  /* content column up to 1180px, centred in the space right of the sidebar */
+  #topbar,
+  #screens {
+    padding-left: max(32px, calc((100% - 1180px) / 2));
+    padding-right: max(32px, calc((100% - 1180px) / 2));
+  }
+  #topbar {
+    min-height: 72px;
+    gap: 10px;
+    background: transparent;
+  }
+  #topbar .vl-logo { display: none; }
+  .vl-top-title { display: block; }
+  .vl-ton-text { position: static; width: auto; height: auto; overflow: visible; clip-path: none; }
+  #screens { padding-top: 8px; padding-bottom: 48px; }
+  :root[data-theme="light"] .scr:not(.vl-redone).on { border-radius: var(--r-md); overflow: hidden; }
+  #toast { bottom: 32px; }
+}
+
+/* very narrow phones: drop the unit to keep the top bar on one line */
+@media (max-width: 359px) {
+  #topbar .vl-bal-unit { display: none; }
+  #topbar { gap: 6px; padding-left: 12px; padding-right: 12px; }
+}
+
+/* ── splash: quiet wordmark fade on the theme background (JS adds .out after init) ── */
+#splash { background: var(--bg-glow) no-repeat, var(--bg); }
+.vl-splash-mark {
+  font: 700 40px/1 var(--font);
+  letter-spacing: -1px;
+  color: var(--text);
+  animation: vl-splash-in .5s var(--ease) .1s both;
+}
+.vl-splash-mark i { font-style: normal; color: var(--accent-text); }
+.vl-splash-sub {
+  margin-top: 12px;
+  font: 500 var(--fs-sm)/1.3 var(--font);
+  color: var(--muted);
+  text-align: center;
+  animation: vl-splash-in .5s var(--ease) .3s both;
+}
+@keyframes vl-splash-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  #app, #tabbar .nb, #tabbar .nb::before, .nb-fab, .vl-side-link { transition: none; }
+  .vl-splash-mark, .vl-splash-sub { animation: none; }
+}

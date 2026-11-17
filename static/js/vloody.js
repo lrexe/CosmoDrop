@@ -77,18 +77,30 @@
   function setBalance(v) {
     if (state.profile) state.profile.balance = v;
     $("tb-stars-val").textContent = fmt(v);
+    $("sb-stars-val").textContent = fmt(v);
     $("pf-bal").textContent = fmt(v);
   }
 
   // ------------------------------------------------------------------ навигация
+  const SCREEN_TITLE = { home: "Раунды", events: "Лидеры", create: "Новый раунд", profile: "Профиль",
+    wheel: "Колесо", vault: "Сейф", auction: "Аукцион" };
+  // подсветка пункта в боковой панели (#sidebar) и в нижней навигации (#tabbar)
+  function markNav(name) {
+    document.querySelectorAll("#sidebar [data-tab], #tabbar [data-tab]").forEach((b) => {
+      const on = b.dataset.tab === name;
+      b.classList.toggle("on", on);
+      if (on) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current");
+    });
+  }
   function show(screen) {
     document.querySelectorAll(".scr").forEach((s) => s.classList.remove("on"));
     $("sc-" + screen).classList.add("on");
     $("screens").scrollTop = 0;
+    $("vl-title").textContent = SCREEN_TITLE[screen] || "Vloody";
   }
   function tab(name) {
     stopPoolWatch();
-    document.querySelectorAll(".nb,.nb-ctr").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
+    markNav(name);
     show(name);
     state.back = name;
     if (name === "home") loadPools();
@@ -167,8 +179,6 @@
       : `<div class="empty-note">Активных розыгрышей пока нет.<br>Стань первым — нажми «Создать».</div>`;
     $("pools-finished").innerHTML = state.pools.finished.length ? state.pools.finished.map(poolCard).join("")
       : `<div class="empty-note">Пока пусто</div>`;
-    $("live-items").innerHTML = state.pools.live.slice(0, 12)
-      .map((p, i) => `<span class="live-item" style="--i:${i}">${esc(p.emoji)}</span>`).join("");
     tickTimers();
   }
 
@@ -182,7 +192,7 @@
     stopPoolWatch();
     state.pool = p; state.spinning = false; state.wheelRot = 0;
     state.offset = p.now_ts - Math.floor(Date.now() / 1000);
-    document.querySelectorAll(".nb,.nb-ctr").forEach((b) => b.classList.remove("on"));
+    markNav(state.back || "home"); // раунд открыт из этого раздела, «назад» вернёт в него
     show(MODE_SCREEN[p.mode]);
     renderPool(false);
     watchTimer = setInterval(refreshPool, 4000);

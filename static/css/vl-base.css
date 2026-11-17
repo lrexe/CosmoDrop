@@ -241,9 +241,6 @@
 :root[data-theme="light"] .vl-when-dark,
 :root:not([data-theme="light"]) .vl-when-light { display: none; }
 
-/* temporary: theme switch inside the legacy top bar (Task 6 rebuilds the shell) */
-.vl-theme-btn { -webkit-appearance: none; appearance: none; color: inherit; font: inherit; line-height: 1; }
-
 @media (prefers-reduced-motion: reduce) {
   .vl-btn, .vl-chip, .input { transition: none; }
   .vl-btn:active { transform: none; }

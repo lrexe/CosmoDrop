@@ -11,6 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/vl-tokens.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/vl-base.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/vl-shell.css') }}">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="{{ url_for('static', filename='js/vl-theme.js') }}"></script>
 <script src="https://unpkg.com/@tonconnect/ui@2/dist/tonconnect-ui.min.js" onerror="window.TON_CONNECT_FAILED=true"></script>
@@ -20,42 +21,59 @@
 </head>
 <body>
 {% include "_icons.html" %}
-{% if DEMO_MODE %}<div class="demo-banner">ДЕМО-РЕЖИМ · VLD и подарки не настоящие</div>{% endif %}
-
-<!-- SPLASH -->
-<div id="splash">
-  <div class="sp-orb"></div>
-  <div class="sp-content">
-    <div class="sp-drips"><span class="drip"></span><span class="drip"></span><span class="drip"></span><span class="drip"></span><span class="drip"></span></div>
-    <div class="sp-wordmark">VLOODY</div>
-    <div class="sp-tagline">Честные розыгрыши · Provably Fair</div>
-    <div class="sp-track"><div class="sp-fill"></div></div>
-  </div>
+<!-- SPLASH (removed after init) -->
+<div id="splash" aria-hidden="true">
+  <div class="vl-splash-mark">Vl<i>oo</i>dy</div>
+  <div class="vl-splash-sub">Честные розыгрыши подарков</div>
 </div>
 
 <div id="loader"><div class="ld-gem">💎</div><div class="ld-txt">Загрузка...</div></div>
 
 <div id="app">
-  <!-- TOPBAR -->
-  <div class="topbar">
-    <div class="tb-logo"><em>Vloody</em></div>
-    <button type="button" class="tb-pill rp vl-theme-btn" data-act="theme" aria-label="Сменить тему" title="Сменить тему">
-      <svg class="ic ic-sm vl-when-dark"><use href="#i-sun"/></svg><svg class="ic ic-sm vl-when-light"><use href="#i-moon"/></svg>
-    </button>
-    <div class="tb-pill rp" data-act="ton-connect">
-      <svg width="14" height="14" viewBox="0 0 100 100"><polygon points="50,5 95,30 95,70 50,95 5,70 5,30" fill="none" stroke="#0098EA" stroke-width="8"/><polygon points="50,28 72,40 50,78 28,40" fill="#0098EA"/></svg>
-      <span id="tb-ton-text">Подключить</span>
+<div id="shell">
+  <!-- SIDEBAR (desktop ≥ 861px) -->
+  <aside id="sidebar" aria-label="Разделы">
+    <div class="vl-logo">Vl<i>oo</i>dy</div>
+    <nav class="vl-side-nav" aria-label="Основная навигация">
+      <button type="button" class="vl-side-link on" data-tab="home" aria-current="page"><svg class="ic" aria-hidden="true"><use href="#i-rounds"/></svg>Раунды</button>
+      <button type="button" class="vl-side-link" data-tab="events"><svg class="ic" aria-hidden="true"><use href="#i-leaders"/></svg>Лидеры</button>
+      <button type="button" class="vl-side-link" data-tab="create"><svg class="ic" aria-hidden="true"><use href="#i-create"/></svg>Создать</button>
+      <button type="button" class="vl-side-link" data-tab="profile"><svg class="ic" aria-hidden="true"><use href="#i-profile"/></svg>Профиль</button>
+      <div class="vl-side-sep" role="presentation"></div>
+      <button type="button" class="vl-side-link" data-act="fair-info"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg>Честность</button>
+    </nav>
+    <div class="vl-side-foot">
+      <div class="card vl-side-bal">
+        <div class="vl-side-bal-lbl">Баланс</div>
+        <div class="vl-side-bal-row"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg><span class="num vl-side-bal-val" id="sb-stars-val">0</span><span class="vl-side-bal-unit">VLD</span></div>
+        <button type="button" class="vl-btn vl-btn-primary vl-btn-sm vl-btn-block" data-act="topup"><svg class="ic" aria-hidden="true"><use href="#i-create"/></svg>Пополнить</button>
+      </div>
+      <button type="button" class="vl-btn vl-btn-ghost vl-btn-sm vl-btn-block vl-side-theme" data-act="theme">
+        <svg class="ic vl-when-dark" aria-hidden="true"><use href="#i-sun"/></svg><svg class="ic vl-when-light" aria-hidden="true"><use href="#i-moon"/></svg>
+        <span class="vl-when-dark">Светлая тема</span><span class="vl-when-light">Тёмная тема</span>
+      </button>
     </div>
-    <div class="tb-pill rp" data-act="topup">
-      <span class="star-i"></span><span id="tb-stars-val">0</span>
-    </div>
-  </div>
+  </aside>
 
-  <!-- LIVE BAR -->
-  <div class="livebar">
-    <div class="live-badge"><div class="live-dot"></div>LIVE</div>
-    <div id="live-items" class="live-items"></div>
-  </div>
+  <main id="content">
+    {% if DEMO_MODE %}<div class="vl-demo" role="note">Демо-режим · VLD и подарки не настоящие</div>{% endif %}
+    <!-- TOP BAR -->
+    <header id="topbar">
+      <div class="vl-logo">Vl<i>oo</i>dy</div>
+      <h1 class="vl-top-title" id="vl-title">Раунды</h1>
+      <div class="vl-top-spacer"></div>
+      <button type="button" class="vl-btn vl-btn-ghost vl-btn-sm vl-top-btn vl-ton" data-act="ton-connect" title="TON-кошелёк">
+        <svg class="ic" aria-hidden="true"><use href="#i-ton"/></svg><span class="vl-ton-text" id="tb-ton-text">Подключить</span>
+      </button>
+      <button type="button" class="vl-btn vl-btn-ghost vl-btn-sm vl-btn-icon vl-top-btn" data-act="theme" aria-label="Сменить тему" title="Сменить тему">
+        <svg class="ic vl-when-dark" aria-hidden="true"><use href="#i-sun"/></svg><svg class="ic vl-when-light" aria-hidden="true"><use href="#i-moon"/></svg>
+      </button>
+      <div class="vl-bal">
+        <svg class="ic" aria-hidden="true"><use href="#i-star"/></svg>
+        <span class="num vl-bal-val" id="tb-stars-val">0</span><span class="vl-bal-unit">VLD</span>
+        <button type="button" class="vl-btn vl-btn-primary vl-btn-icon vl-bal-plus" data-act="topup" aria-label="Пополнить баланс" title="Пополнить"><svg class="ic" aria-hidden="true"><use href="#i-create"/></svg></button>
+      </div>
+    </header>
 
   <div id="screens">
     <!-- ══ ГЛАВНАЯ ══ -->
@@ -343,18 +361,17 @@
       </div>
     </div>
   </div><!-- /screens -->
+  </main>
 
-  <!-- NAVBAR -->
-  <div class="navbar">
-    <button class="nb on" data-tab="home"><div class="nb-ic">🏠</div>Главная</button>
-    <button class="nb" data-tab="events"><div class="nb-ic">👑</div>Ивенты</button>
-    <div class="nb-ctr" data-tab="create">
-      <button class="nb-fab rp">＋</button>
-      <div class="nb-fab-lbl">Создать</div>
-    </div>
-    <button class="nb" data-tab="profile"><div class="nb-ic">👤</div>Профиль</button>
-    <button class="nb" data-act="fair-info"><div class="nb-ic">🛡</div>Честность</button>
-  </div>
+  <!-- TAB BAR (phone ≤ 860px) -->
+  <nav id="tabbar" aria-label="Основная навигация">
+    <button type="button" class="nb on" data-tab="home" aria-current="page"><svg class="ic" aria-hidden="true"><use href="#i-rounds"/></svg>Раунды</button>
+    <button type="button" class="nb" data-tab="events"><svg class="ic" aria-hidden="true"><use href="#i-leaders"/></svg>Лидеры</button>
+    <button type="button" class="nb-ctr" data-tab="create"><span class="nb-fab"><svg class="ic" aria-hidden="true"><use href="#i-create"/></svg></span>Создать</button>
+    <button type="button" class="nb" data-tab="profile"><svg class="ic" aria-hidden="true"><use href="#i-profile"/></svg>Профиль</button>
+    <button type="button" class="nb" data-act="fair-info"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg>Честность</button>
+  </nav>
+</div><!-- /shell -->
 </div><!-- /app -->
 
 <!-- STAKE MODAL -->
