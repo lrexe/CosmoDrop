@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/vl-base.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/vl-shell.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/vl-cards.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/vl-rounds.css') }}">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="{{ url_for('static', filename='js/vl-theme.js') }}"></script>
 <script src="https://unpkg.com/@tonconnect/ui@2/dist/tonconnect-ui.min.js" onerror="window.TON_CONNECT_FAILED=true"></script>
@@ -104,132 +105,213 @@
       <div class="vl-pools vl-pools-done" id="pools-finished"></div>
     </div>
 
-    <!-- ══ КОЛЕСО ══ -->
-    <div class="scr" id="sc-wheel">
-      <div class="det-hero a1" id="det-hero">
-        <div class="det-glow"></div><div class="det-bg-pattern"></div>
-        <span id="det-em" class="det-em">🎁</span>
-        <div class="det-rare">NFT · ЭСКРОУ</div>
-        <div class="det-back rp" data-act="back">←</div>
-      </div>
-      <div class="det-info">
-        <div class="det-name" id="det-name">—</div>
-        <div class="det-org"><span class="ldot"></span> <b id="det-org">—</b> · <span id="det-status">Live</span></div>
-        <div class="det-grid">
-          <div class="dg"><span class="dg-v"><span id="det-min">0</span> <span class="star-i"></span></span><span class="dg-l">Мин. ставка</span></div>
-          <div class="dg"><span class="dg-v" id="det-part">0 чел.</span><span class="dg-l">Участников</span></div>
-          <div class="dg"><span class="dg-v" id="det-chance">0%</span><span class="dg-l">Мой шанс</span></div>
-        </div>
-        <div class="det-prog"><div class="det-pf" id="det-pf" style="width:0%"></div></div>
-        <div class="det-timer"><span class="ldot"></span> Банк: <b><span id="det-bank">0</span> <span class="star-i"></span></b> · крутится через <b id="det-timer">—</b></div>
-        <button class="btn btn-v rp" id="det-buy" data-act="stake-open"><span class="star-i w"></span> Сделать ставку</button>
-        <button class="btn btn-dim rp hid" id="det-cancel" data-act="pool-cancel">Отменить раунд (ставок нет)</button>
-      </div>
-      <div class="mtabs">
-        <button class="mtab on rp" data-wmode="av">👤 Аватарки</button>
-        <button class="mtab rp" data-wmode="num">🔢 Проценты</button>
-      </div>
-      <div class="wheel-sec">
-        <div class="wheel-wrap">
-          <svg class="w-ptr" width="22" height="26" viewBox="0 0 22 26"><polygon points="11,24 21,2 1,2" fill="#f59e0b" stroke="#fde68a" stroke-width="1"/></svg>
-          <canvas id="wcanvas" width="278" height="278"></canvas>
-          <div class="w-hub" id="w-hub">💎</div>
-        </div>
-        <div class="cd-card" id="wheel-cd">
-          <div class="cd-lbl">Барабан закрутится через</div>
-          <div class="cd-time" id="spin-cd">—</div>
-          <div class="cd-note">Время задал организатор · розыгрыш автоматический</div>
-        </div>
-        <div class="winner-card" id="det-winner">
-          <span class="w-crown">🏆</span>
-          <div class="w-title" id="det-wt">Победитель!</div>
-          <div class="w-sub" id="det-ws">Подарок уже в инвентаре победителя</div>
-        </div>
-        <div class="stakes-card">
-          <div class="stakes-lbl" id="stakes-lbl">📋 Ставки</div>
-          <div id="stakes-list"></div>
-        </div>
-        <div class="fair-card" id="wheel-fair"></div>
+    <!-- ══ РАУНД: КОЛЕСО ══ (стили: static/css/vl-rounds.css, рендер: renderWheel / drawWheel в vloody.js) -->
+    <div class="scr vl-redone vl-rd" id="sc-wheel">
+      <div class="vl-rd-grid">
+        <header class="vl-rd-head">
+          <div class="vl-rd-bar">
+            <button type="button" class="vl-btn vl-btn-ghost vl-btn-sm vl-rd-back" data-act="back"><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg>Назад</button>
+            <span class="vl-rd-mode"><svg class="ic" aria-hidden="true"><use href="#i-wheel"/></svg>Колесо</span>
+            <span class="tag" id="det-status"></span>
+          </div>
+          <div class="vl-rd-hero">
+            <div class="vl-rd-gift" id="det-gift"></div>
+            <div class="vl-rd-id">
+              <h2 class="vl-rd-title" id="det-name">—</h2>
+              <div class="vl-rd-org">от <b id="det-org">—</b></div>
+            </div>
+          </div>
+        </header>
+
+        <section class="vl-rd-cond" aria-label="Условия раунда">
+          <dl class="vl-rd-stats">
+            <div class="vl-rd-stat"><dt>Мин. ставка</dt><dd><span class="num" id="det-min">0</span><small>VLD</small></dd></div>
+            <div class="vl-rd-stat"><dt>Банк</dt><dd><span class="num" id="det-bank">0</span><small>VLD</small></dd></div>
+            <div class="vl-rd-stat"><dt>Участники</dt><dd><span class="num" id="det-part">0</span></dd></div>
+            <div class="vl-rd-stat"><dt>Моя доля · шанс</dt><dd><span class="num" id="det-mine">0</span><small>·</small><span class="num" id="det-chance">0%</span></dd></div>
+          </dl>
+          <div class="vl-rd-time">
+            <svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg><span id="det-time-lbl">До розыгрыша</span><b class="num" id="det-timer">—</b>
+          </div>
+          <div class="vl-rd-prog" aria-hidden="true"><i id="det-pf"></i></div>
+          <div class="vl-rd-act">
+            <button type="button" class="vl-btn vl-btn-primary vl-btn-block" id="det-buy" data-act="stake-open"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg>Сделать ставку</button>
+            <button type="button" class="vl-btn vl-btn-ghost vl-btn-block hid" id="det-cancel" data-act="pool-cancel">Отменить раунд — ставок нет</button>
+          </div>
+        </section>
+
+        <section class="vl-rd-main" aria-label="Колесо">
+          <div class="vl-wh-tools">
+            <h3 class="vl-rd-h">Доли в банке</h3>
+            <div class="vl-seg" role="group" aria-label="Подписи на секторах">
+              <button type="button" class="vl-seg-btn on" data-wmode="av" aria-pressed="true">Аватарки</button>
+              <button type="button" class="vl-seg-btn" data-wmode="num" aria-pressed="false">Проценты</button>
+            </div>
+          </div>
+          <div class="vl-wh-stage">
+            <div class="vl-wh" id="wheel-box">
+              <canvas id="wcanvas" role="img" aria-label="Колесо: сектора участников пропорциональны ставкам"></canvas>
+              <div class="vl-wh-hub" id="w-hub"></div>
+              <svg class="vl-wh-ptr" id="w-ptr" viewBox="0 0 30 40" aria-hidden="true">
+                <path class="vl-wh-ptr-body" d="M15 38.5 3.2 13.6A12.8 12.8 0 1 1 26.8 13.6z"/>
+                <circle class="vl-wh-ptr-pin" cx="15" cy="11" r="3.6"/>
+              </svg>
+            </div>
+          </div>
+          <div class="vl-wh-cd" id="wheel-cd">
+            <span class="vl-wh-cd-l">Колесо закрутится через</span>
+            <b class="num" id="spin-cd">—</b>
+            <span class="vl-wh-cd-n">Время задал организатор · розыгрыш автоматический</span>
+          </div>
+          <div class="vl-win" id="det-winner" role="status" aria-live="polite">
+            <span class="vl-win-ic"><svg class="ic" aria-hidden="true"><use href="#i-leaders"/></svg></span>
+            <div class="vl-win-txt"><div class="vl-win-t" id="det-wt"></div><div class="vl-win-s" id="det-ws"></div></div>
+          </div>
+          <div class="vl-rd-list">
+            <h3 class="vl-rd-h" id="stakes-lbl">Ставки</h3>
+            <ol class="vl-stakes" id="stakes-list"></ol>
+          </div>
+        </section>
+
+        <section class="vl-fair" id="wheel-fair" aria-label="Проверка честности"></section>
       </div>
     </div>
 
-    <!-- ══ СЕЙФ ══ -->
-    <div class="scr" id="sc-vault">
-      <div class="scr-head">
-        <div class="det-back rp static" data-act="back">←</div>
-        <div class="scr-head-t">🔒 КИБЕР-СЕЙФ</div>
-      </div>
-      <div class="pad">
-        <div class="grid-hdr-card">
-          <div class="ghc-thumb a2" id="vt-img">👁</div>
-          <div class="grow">
-            <div class="ghc-name" id="vt-name">—</div>
-            <div class="ghc-val" id="vt-org">NFT подарок</div>
+    <!-- ══ РАУНД: СЕЙФ ══ -->
+    <div class="scr vl-redone vl-rd" id="sc-vault">
+      <div class="vl-rd-grid">
+        <header class="vl-rd-head">
+          <div class="vl-rd-bar">
+            <button type="button" class="vl-btn vl-btn-ghost vl-btn-sm vl-rd-back" data-act="back"><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg>Назад</button>
+            <span class="vl-rd-mode"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg>Сейф</span>
+            <span class="tag" id="vt-status"></span>
           </div>
-          <div class="ta-r">
-            <div class="gi-lbl">Банк</div>
-            <div class="gi-val"><span id="vt-bank">0</span> <span class="star-i"></span></div>
+          <div class="vl-rd-hero">
+            <div class="vl-rd-gift" id="vt-gift"></div>
+            <div class="vl-rd-id">
+              <h2 class="vl-rd-title" id="vt-name">—</h2>
+              <div class="vl-rd-org">от <b id="vt-org">—</b></div>
+            </div>
           </div>
-        </div>
+        </header>
+
+        <section class="vl-rd-cond" aria-label="Условия раунда">
+          <dl class="vl-rd-stats">
+            <div class="vl-rd-stat"><dt>Попытка</dt><dd><span class="num" id="vt-min">0</span><small>VLD</small></dd></div>
+            <div class="vl-rd-stat"><dt>Банк</dt><dd><span class="num" id="vt-bank">0</span><small>VLD</small></dd></div>
+            <div class="vl-rd-stat"><dt>Участники</dt><dd><span class="num" id="vt-part">0</span></dd></div>
+            <div class="vl-rd-stat"><dt>Занято чисел</dt><dd><span class="num" id="vt-taken">0</span></dd></div>
+          </dl>
+          <p class="vl-rd-note" id="vt-hint"></p>
+          <div class="vl-rd-act">
+            <button type="button" class="vl-btn vl-btn-ghost vl-btn-block hid" id="vt-cancel" data-act="pool-cancel">Отменить раунд — попыток нет</button>
+          </div>
+        </section>
+
+        <section class="vl-rd-main" aria-label="Сейф">
+          <div class="vl-safe-stage">
+            <div class="vl-safe" id="vault-safe">
+              <div class="vl-safe-box">
+                <div class="vl-safe-inside">
+                  <span class="vl-safe-light" aria-hidden="true"></span>
+                  <div class="vl-safe-prize" id="vt-prize"></div>
+                </div>
+                <div class="vl-safe-door" aria-hidden="true">
+                  <div class="vl-door-front">
+                    <span class="vl-door-hinge vl-door-hinge-t"></span><span class="vl-door-hinge vl-door-hinge-b"></span>
+                    <span class="vl-door-bolt vl-door-bolt-1"></span><span class="vl-door-bolt vl-door-bolt-2"></span><span class="vl-door-bolt vl-door-bolt-3"></span>
+                    <div class="vl-door-panel">
+                      <div class="vl-door-screen"><span class="vl-door-led" id="vt-led"></span><b class="num" id="vt-display">– – –</b></div>
+                      <div class="vl-door-dial" id="vt-dial"><span class="vl-door-dial-knob"></span></div>
+                      <div class="vl-door-handle"><i></i><i></i><i></i><span></span></div>
+                    </div>
+                  </div>
+                  <div class="vl-door-edge"></div>
+                  <div class="vl-door-back"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="vl-vt-form" id="vt-form">
+            <label class="sr-only" for="vt-num">Число от 1 до максимума</label>
+            <input class="input num" id="vt-num" type="number" min="1" inputmode="numeric" placeholder="Твоё число" autocomplete="off">
+            <button type="button" class="vl-btn vl-btn-primary" data-act="vault-try"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg>Взломать</button>
+          </div>
+          <div class="vl-win" id="vt-winner" role="status" aria-live="polite">
+            <span class="vl-win-ic"><svg class="ic" aria-hidden="true"><use href="#i-leaders"/></svg></span>
+            <div class="vl-win-txt"><div class="vl-win-t" id="vt-wt"></div><div class="vl-win-s" id="vt-ws"></div></div>
+          </div>
+          <div class="vl-vgrid-wrap">
+            <div class="vl-rd-hrow"><h3 class="vl-rd-h">Поле чисел</h3><span class="vl-rd-hnote">занято <b class="num" id="vt-g-taken">0</b></span></div>
+            <div class="vl-vgrid" id="vt-grid"></div>
+            <div class="vl-vlegend" aria-hidden="true">
+              <span><i class="vl-vl-free"></i>свободно</span><span><i class="vl-vl-taken"></i>занято</span>
+              <span><i class="vl-vl-mine"></i>твоё</span><span><i class="vl-vl-win"></i>выигрыш</span>
+            </div>
+          </div>
+          <div class="vl-rd-list">
+            <h3 class="vl-rd-h">Последние попытки</h3>
+            <ol class="vl-feed" id="vt-feed"></ol>
+          </div>
+        </section>
+
+        <section class="vl-fair" id="vault-fair" aria-label="Проверка честности"></section>
       </div>
-      <div class="vault-stage">
-        <div class="vault-safe" id="vault-safe"><div class="vault-dial"></div></div>
-        <div class="vault-hint" id="vt-hint"></div>
-      </div>
-      <div class="vault-form" id="vt-form">
-        <input class="vault-input" id="vt-num" type="number" min="1" placeholder="—" inputmode="numeric">
-        <button class="vault-btn rp" data-act="vault-try">Взломать код</button>
-      </div>
-      <div class="pad"><button class="btn btn-dim rp hid" id="vt-cancel" data-act="pool-cancel">Отменить раунд (попыток нет)</button></div>
-      <div class="winner-card" id="vt-winner">
-        <span class="w-crown">🏆</span>
-        <div class="w-title" id="vt-wt">Сейф вскрыт!</div>
-        <div class="w-sub" id="vt-ws"></div>
-      </div>
-      <div class="vault-grid-wrap">
-        <div class="vault-grid-hdr"><span>Поле чисел</span><span>Занято: <b id="vt-g-taken">0</b></span></div>
-        <div class="vault-grid" id="vt-grid"></div>
-      </div>
-      <div class="vault-feed" id="vt-feed"></div>
-      <div class="pad"><div class="fair-card" id="vault-fair"></div></div>
     </div>
 
-    <!-- ══ АУКЦИОН ══ -->
-    <div class="scr" id="sc-auction">
-      <div class="scr-head">
-        <div class="det-back rp static" data-act="back">←</div>
-        <div class="scr-head-t">🕶 СЛЕПОЙ АУКЦИОН</div>
-      </div>
-      <div class="pad">
-        <div class="grid-hdr-card">
-          <div class="ghc-thumb a4" id="auc-img">🎭</div>
-          <div class="grow">
-            <div class="ghc-name" id="auc-name">—</div>
-            <div class="ghc-val" id="auc-org">NFT подарок · победитель забирает актив</div>
+    <!-- ══ РАУНД: СЛЕПОЙ АУКЦИОН ══ -->
+    <div class="scr vl-redone vl-rd" id="sc-auction">
+      <div class="vl-rd-grid">
+        <header class="vl-rd-head">
+          <div class="vl-rd-bar">
+            <button type="button" class="vl-btn vl-btn-ghost vl-btn-sm vl-rd-back" data-act="back"><svg class="ic" aria-hidden="true"><use href="#i-back"/></svg>Назад</button>
+            <span class="vl-rd-mode"><svg class="ic" aria-hidden="true"><use href="#i-eye-off"/></svg>Слепой аукцион</span>
+            <span class="tag" id="auc-status"></span>
           </div>
-        </div>
+          <div class="vl-rd-hero">
+            <div class="vl-rd-gift" id="auc-gift"></div>
+            <div class="vl-rd-id">
+              <h2 class="vl-rd-title" id="auc-name">—</h2>
+              <div class="vl-rd-org">от <b id="auc-org">—</b></div>
+            </div>
+          </div>
+        </header>
+
+        <section class="vl-rd-cond" aria-label="Условия раунда">
+          <dl class="vl-rd-stats">
+            <div class="vl-rd-stat"><dt>Мин. ставка</dt><dd><span class="num" id="auc-min">0</span><small>VLD</small></dd></div>
+            <div class="vl-rd-stat"><dt>Банк</dt><dd id="auc-bank"></dd></div>
+            <div class="vl-rd-stat"><dt>Участники</dt><dd id="auc-part"></dd></div>
+            <div class="vl-rd-stat"><dt>Твоя накопленная ставка</dt><dd id="auc-mine-val">—</dd></div>
+          </dl>
+          <p class="vl-rd-note">Ставки скрыты и не возвращаются. Побеждает наибольшая накопленная сумма, при равенстве — тот, кто достиг её раньше.</p>
+          <div class="vl-rd-act">
+            <button type="button" class="vl-btn vl-btn-ghost vl-btn-block hid" id="auc-cancel" data-act="pool-cancel">Отменить раунд — ставок нет</button>
+          </div>
+        </section>
+
+        <section class="vl-rd-main" aria-label="Аукцион">
+          <div class="vl-auc-stage" id="auc-stage">
+            <div class="vl-auc-board" id="auc-result" aria-live="polite"></div>
+            <div class="vl-shutter" id="auc-blackout">
+              <div class="vl-shutter-slats" aria-hidden="true"></div>
+              <div class="vl-shutter-in">
+                <span class="vl-shutter-ic" aria-hidden="true"><svg class="ic"><use href="#i-eye-off"/></svg></span>
+                <div class="vl-shutter-t">Полный блэкаут</div>
+                <p class="vl-shutter-s">Никто не видит чужих ставок и размер банка. Всё откроется в момент раскрытия.</p>
+                <div class="vl-shutter-cd" id="auc-cd-card"><span>До раскрытия</span><b class="num" id="auc-cd">—</b></div>
+              </div>
+            </div>
+          </div>
+          <div class="vl-auc-form" id="auc-form">
+            <label class="sr-only" for="auc-amt">Сумма ставки, VLD</label>
+            <input class="input num" id="auc-amt" type="number" inputmode="numeric" placeholder="20+" autocomplete="off">
+            <button type="button" class="vl-btn vl-btn-primary" data-act="auction-bid"><svg class="ic" aria-hidden="true"><use href="#i-eye-off"/></svg>Поставить вслепую</button>
+          </div>
+        </section>
+
+        <section class="vl-fair" id="auction-fair" aria-label="Проверка честности"></section>
       </div>
-      <div class="auc-blackout" id="auc-blackout">
-        <div class="auc-eye">🕶</div>
-        <div class="auc-bo-title">Полный блэкаут</div>
-        <div class="auc-bo-sub">Никто не видит чужих ставок и размер банка. Результат покажет только раскрытие в конце.</div>
-      </div>
-      <div class="auc-mine">
-        <div class="auc-mine-lbl">Твоя накопленная ставка</div>
-        <div class="auc-mine-val" id="auc-mine-val">— (ещё не ставил)</div>
-      </div>
-      <div class="cd-card mx" id="auc-cd-card">
-        <div class="cd-lbl">До раскрытия</div>
-        <div class="cd-time" id="auc-cd">—</div>
-        <div class="cd-note">Ставки не возвращаются: побеждает наибольшая накопленная, остальные остаются в банке</div>
-      </div>
-      <div class="vault-form" id="auc-form">
-        <input class="vault-input" id="auc-amt" type="number" placeholder="20+" inputmode="numeric">
-        <button class="vault-btn rp" data-act="auction-bid">Поставить</button>
-      </div>
-      <div class="pad"><button class="btn btn-dim rp hid" id="auc-cancel" data-act="pool-cancel">Отменить раунд (ставок нет)</button></div>
-      <div class="pad"><div class="result hid" id="auc-result"></div></div>
-      <div class="pad"><div class="fair-card" id="auction-fair"></div></div>
     </div>
 
     <!-- ══ ИВЕНТЫ ══ -->

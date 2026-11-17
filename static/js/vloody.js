@@ -7,7 +7,6 @@
   const VL = window.VL || {};
   const $ = (id) => document.getElementById(id);
   const STAR = '<span class="star-i"></span>';
-  const PAL = ["#3b0764", "#1e1b4b", "#0c4a6e", "#064e3b", "#1c1917", "#4a044e", "#0f172a", "#1a2e05", "#450a0a", "#0a0a2e"];
   const MODE_INFO = { wheel: { name: "Колесо", icon: "i-wheel" }, vault: { name: "Сейф", icon: "i-lock" },
     auction: { name: "Аукцион", icon: "i-eye-off" } };
   const MODE_SCREEN = { wheel: "wheel", vault: "vault", auction: "auction" };
@@ -232,8 +231,31 @@
   }
 
   // ================================================================== РАУНД
+  // Разметка — templates/vloody.html (#sc-wheel / #sc-vault / #sc-auction), стили — static/css/vl-rounds.css.
   let watchTimer = 0;
-  function stopPoolWatch() { clearInterval(watchTimer); watchTimer = 0; state.pool = null; }
+  const reducedMotion = () => !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const YOU = `<span class="vl-you">ты</span>`;
+  const fmtPct = (v) => (Number(v) || 0).toLocaleString("ru-RU", { maximumFractionDigits: 1 }) + "%";
+
+  // Картинка подарка (+ lottie, если есть p.anim) в коробке экрана раунда. Пересобирается только когда подарок
+  // меняется, поэтому опрос раз в 4 с не перезапускает анимацию; при уходе с раунда все экземпляры уничтожаются.
+  const giftBoxes = new Map(); // box → {key, anim}
+  function mountGift(box, p, cls, withAnim) {
+    if (!box) return;
+    const anim = withAnim && p.anim ? p.anim : "";
+    const key = `${p.id}|${p.image || ""}|${anim}`;
+    const cur = giftBoxes.get(box);
+    if (cur && cur.key === key) return;
+    if (cur && cur.anim) cur.anim.destroy();
+    box.innerHTML = VLFx.giftImg(p, cls);
+    giftBoxes.set(box, { key, anim: anim ? VLFx.lottie(box, anim, { loop: true }) : null });
+  }
+  function unmountGifts() {
+    giftBoxes.forEach((g) => { if (g.anim) g.anim.destroy(); });
+    giftBoxes.clear();
+  }
+
+  function stopPoolWatch() { clearInterval(watchTimer); watchTimer = 0; state.pool = null; unmountGifts(); }
 
   async function openPool(id) {
     let p;
@@ -243,7 +265,9 @@
     state.offset = p.now_ts - Math.floor(Date.now() / 1000);
     markNav(state.back || "home"); // раунд открыт из этого раздела, «назад» вернёт в него
     show(MODE_SCREEN[p.mode]);
+    state.poolFresh = true; // первая отрисовка: дверь сейфа без анимации, раскрытие аукциона проигрывается
     renderPool(false);
+    state.poolFresh = false;
     watchTimer = setInterval(refreshPool, 4000);
   }
 
@@ -253,7 +277,8 @@
     if (cur.status !== "live") { clearInterval(watchTimer); return; }
     try {
       const p = await api("/api/pools/" + cur.id);
-      if (!state.pool || state.pool.id !== p.id) return;
+      // параллельный запрос (таймер + опрос) уже применил завершение — второй раз не проигрываем раскрытие
+      if (!state.pool || state.pool.id !== p.id || state.pool.status !== "live") return;
       const justFinished = p.status === "finished";
       state.pool = p;
       renderPool(justFinished);
@@ -266,157 +291,371 @@
     const p = state.pool; if (!p) return;
     if (p.mode === "wheel") renderWheel(animate);
     else if (p.mode === "vault") renderVault();
-    else renderAuction();
+    else renderAuction(animate);
     tickTimers();
   }
 
+  function setStatus(el, p) {
+    const s = { live: ["идёт", "tag tag-live"], finished: ["завершён", "tag"], cancelled: ["отменён", "tag tag-danger"] }[p.status]
+      || [p.status, "tag"];
+    el.textContent = s[0]; el.className = s[1];
+  }
+
   function fairHtml(p) {
-    const f = p.fair || {};
-    let h = `<b>Проверка честности</b>Хеш, опубликованный при создании:<span class="mono">${esc(f.seed_hash)}</span>`;
+    const f = p.fair || {}, r = f.result || {};
+    let rows = `<div class="vl-fair-row"><span>Хеш, опубликованный при создании</span><code class="num">${esc(f.seed_hash)}</code></div>`;
+    let note = "";
     if (f.seed) {
-      h += `Раскрытый seed:<span class="mono">${esc(f.seed)}</span>`;
-      const r = f.result || {};
-      if (p.mode === "wheel" && r.total) h += `Билет <b>${fmt(r.ticket)}</b> из <b>${fmt(r.total)}</b> · ставок: ${r.entries}`;
-      if (p.mode === "vault") h += `Секретное число: <b>${esc(p.secret)}</b> · sha256("${esc(p.secret)}:seed") совпадает с хешем`;
-    } else h += `Seed раскроется после завершения — по нему можно пересчитать результат.`;
-    return h;
+      rows += `<div class="vl-fair-row"><span>Раскрытый seed</span><code class="num">${esc(f.seed)}</code></div>`;
+      if (p.mode === "wheel" && r.total) {
+        note = `Билет <b class="num">${fmt(r.ticket)}</b> из <b class="num">${fmt(r.total)}</b>, ставок: <b class="num">${fmt(r.entries)}</b>. Побеждает тот, чей отрезок ставок накрывает билет.`;
+      } else if (p.mode === "vault" && p.secret != null) {
+        note = `Секретное число <b class="num">${esc(p.secret)}</b>: sha256("${esc(p.secret)}:seed") совпадает с хешем.`;
+      } else if (p.mode === "auction") note = "Все накопленные ставки открыты. Побеждает наибольшая; при равенстве — кто достиг её раньше.";
+    } else if (p.mode === "auction") note = "Суммы ставок и банк откроются только в момент раскрытия.";
+    else note = "Seed раскроется после завершения — по нему можно пересчитать результат.";
+    return `<h3 class="vl-fair-h">${icon("i-shield")}Проверка честности</h3>${rows}`
+      + (note ? `<p class="vl-fair-note">${note}</p>` : "")
+      + `<button type="button" class="vl-fair-more" data-act="fair-info">Как это устроено</button>`;
+  }
+
+  function showWinner(box, title, sub) {
+    if (title == null) { box.classList.remove("is-on"); return; }
+    box.querySelector(".vl-win-t").textContent = title;
+    box.querySelector(".vl-win-s").textContent = sub;
+    box.classList.add("is-on");
   }
 
   // ---------------------------------------------------------------- колесо
-  function drawWheel(rot) {
-    const p = state.pool, c = $("wcanvas"), ctx = c.getContext("2d");
-    const cx = 139, cy = 139, r = 133; ctx.clearRect(0, 0, 278, 278);
-    const stakes = (p && p.stakes) || [];
-    if (!stakes.length) {
-      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = "#131316"; ctx.fill();
-      ctx.fillStyle = "#ffffff33"; ctx.font = "bold 13px Inter,sans-serif"; ctx.textAlign = "center";
-      ctx.textBaseline = "middle"; ctx.fillText("Ожидание ставок", cx, cy); return;
-    }
-    const total = stakes.reduce((s, x) => s + x.amount, 0);
-    const winKey = state.spinning ? null : p.winner_key;
-    let cur = -Math.PI / 2;
-    stakes.forEach((s, i) => {
-      const arc = s.amount / total * Math.PI * 2, sa = rot + cur, ea = sa + arc, isW = winKey === s.key && p.status === "finished";
-      const g = ctx.createRadialGradient(cx, cy, r * 0.1, cx, cy, r);
-      if (isW) { g.addColorStop(0, "rgba(245,158,11,.5)"); g.addColorStop(1, "rgba(245,158,11,.8)"); }
-      else { g.addColorStop(0, PAL[i % PAL.length] + "ee"); g.addColorStop(1, PAL[i % PAL.length]); }
-      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, r, sa, ea); ctx.closePath();
-      ctx.fillStyle = g; ctx.fill(); ctx.strokeStyle = "#08080f"; ctx.lineWidth = 2; ctx.stroke();
-      const ma = sa + arc / 2, dist = r * 0.63, ax = cx + Math.cos(ma) * dist, ay = cy + Math.sin(ma) * dist;
-      if (arc > 0.2) {
-        ctx.save(); ctx.translate(ax, ay); ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        if (state.wheelMode === "av") { ctx.font = (arc > 0.5 ? "20px" : "13px") + " serif"; ctx.fillText(s.avatar, 0, 0); }
-        else {
-          ctx.fillStyle = "rgba(255,255,255,.92)"; ctx.font = `bold ${arc > 0.5 ? 13 : 9}px Inter,sans-serif`;
-          ctx.shadowColor = "rgba(0,0,0,.9)"; ctx.shadowBlur = 3;
-          ctx.fillText(Math.round(s.amount / total * 100) + "%", 0, 0);
-        }
-        ctx.restore();
+  // Углы — радианы холста (0 = «3 часа», по часовой). Сектор i начинается в −π/2 + rot + 2π·(сумма ставок до него)/банк.
+  // Стрелка сверху (−π/2), поэтому под ней всегда точка колеса с локальным углом (−rot) mod 2π от начала первого сектора.
+  const TAU = Math.PI * 2;
+  const WheelMath = {
+    total: (stakes) => stakes.reduce((s, x) => s + x.amount, 0),
+    // поворот, при котором середина сектора победителя стоит под стрелкой
+    winnerAngle(stakes, winnerKey) {
+      const total = WheelMath.total(stakes);
+      let before = 0;
+      for (const s of stakes) {
+        if (s.key === winnerKey) return -((before + s.amount / 2) / total) * TAU;
+        before += s.amount;
       }
-      cur += arc;
-    });
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.strokeStyle = "rgba(184,0,31,.4)"; ctx.lineWidth = 3; ctx.stroke();
-    ctx.beginPath(); ctx.arc(cx, cy, r * 0.17, 0, Math.PI * 2); ctx.fillStyle = "#08080f"; ctx.fill();
+      return 0;
+    },
+    // индекс ставки под стрелкой при повороте rot (−1 — пустое колесо)
+    sectorAt(stakes, rot) {
+      const total = WheelMath.total(stakes);
+      if (!total) return -1;
+      const u = (((-rot) % TAU) + TAU) % TAU / TAU * total;
+      let acc = 0;
+      for (let i = 0; i < stakes.length; i++) { acc += stakes[i].amount; if (u < acc) return i; }
+      return stakes.length - 1;
+    },
+    // счётчик пройденных стрелкой границ секторов (растёт с каждой границей, в том числе на колесе из одной ставки)
+    borderCount(stakes, rot) {
+      return Math.floor(-rot / TAU) * stakes.length + WheelMath.sectorAt(stakes, rot);
+    },
+  };
+  window.VLWheelMath = WheelMath; // чистые функции без состояния — для проверки углов из консоли
+  function winnerAngle(p) { return WheelMath.winnerAngle(p.stakes, p.winner_key); }
+
+  // Палитра колеса — CSS-переменные темы (vl-rounds.css), читаются один раз и сбрасываются при смене темы.
+  const WH_SEG = 8;
+  let wheelPal = null, wheelPx = 0;
+  function readWheelPal() {
+    const cs = getComputedStyle($("wcanvas")), v = (n) => cs.getPropertyValue("--vl-wh-" + n).trim();
+    const seg = [];
+    for (let i = 1; i <= WH_SEG; i++) seg.push(v(i));
+    return { seg, ink: v("ink"), me: v("me"), meInk: v("me-ink"), win: v("win"), winInk: v("win-ink"),
+      dim: v("dim"), rimA: v("rim-a"), rimB: v("rim-b"), rimHi: v("rim-hi"), peg: v("peg"), sep: v("sep"),
+      sepHi: v("sep-hi"), shade: v("shade"), light: v("light"), empty: v("empty"), emptyInk: v("empty-ink") };
+  }
+  // номер цвета сектора: «me» / «win» или 1..WH_SEG; соседние сектора (и последний с первым) не совпадают
+  function wheelSlot(stakes, i, winKey) {
+    const s = stakes[i];
+    if (winKey != null && s.key === winKey) return "win";
+    if (s.is_me) return "me";
+    let n = (i % WH_SEG) + 1;
+    if (i === stakes.length - 1 && i > 0 && n === 1) n = 2;
+    return n;
+  }
+  const slotColor = (P, slot) => (slot === "win" ? P.win : slot === "me" ? P.me : P.seg[slot - 1]);
+
+  // холст: CSS-размер — целые px по ширине коробки, буфер = CSS × devicePixelRatio (без размытия)
+  function sizeWheel() {
+    const c = $("wcanvas"), box = $("wheel-box");
+    const css = Math.floor(box.getBoundingClientRect().width);
+    if (!css) return false;
+    const px = Math.round(css * Math.min(3, window.devicePixelRatio || 1));
+    if (c.style.width !== css + "px") { c.style.width = c.style.height = css + "px"; }
+    if (c.width !== px || c.height !== px) { c.width = px; c.height = px; }
+    wheelPx = css;
+    return true;
   }
 
-  function winnerAngle(p) {
-    const total = p.stakes.reduce((s, x) => s + x.amount, 0);
-    let before = 0;
-    for (const s of p.stakes) {
-      if (s.key === p.winner_key) return -((before + s.amount / 2) / total) * Math.PI * 2;
-      before += s.amount;
+  const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+  function drawWheel(rot) {
+    const p = state.pool, c = $("wcanvas");
+    if (!p || p.mode !== "wheel") return;
+    if (!wheelPx && !sizeWheel()) return;
+    const P = wheelPal || (wheelPal = readWheelPal());
+    const ctx = c.getContext("2d"), S = wheelPx, k = c.width / S;
+    ctx.setTransform(k, 0, 0, k, 0, 0);
+    ctx.clearRect(0, 0, S, S);
+    const cx = S / 2, cy = S / 2, R = S / 2 - 1, rimW = Math.max(9, Math.round(S * 0.048)), r = R - rimW;
+    const disc = () => { ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); };
+
+    // обод: металлическая полоса, свет сверху
+    const rg = ctx.createLinearGradient(0, cy - R, 0, cy + R);
+    rg.addColorStop(0, P.rimA); rg.addColorStop(1, P.rimB);
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, TAU); ctx.fillStyle = rg; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, R - 0.75, Math.PI * 1.1, Math.PI * 1.9);
+    ctx.strokeStyle = P.rimHi; ctx.lineWidth = 1.5; ctx.stroke();
+    // фаска внутренней кромки обода: снизу светлее (отражённый свет), сверху — тень
+    const bg = ctx.createLinearGradient(0, cy - r, 0, cy + r);
+    bg.addColorStop(0, P.sep); bg.addColorStop(1, P.rimHi);
+    ctx.beginPath(); ctx.arc(cx, cy, r + 2.5, 0, TAU); ctx.strokeStyle = bg; ctx.lineWidth = 3; ctx.stroke();
+
+    const stakes = p.stakes || [], total = WheelMath.total(stakes);
+    if (!total) {
+      disc(); ctx.fillStyle = P.empty; ctx.fill();
+      ctx.fillStyle = P.emptyInk; ctx.font = `600 ${Math.round(S * 0.042)}px Onest, sans-serif`;
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("Ждём первую ставку", cx, cy + r * 0.55);
+      shadeDisc(ctx, P, cx, cy, r);
+      return;
     }
-    return 0;
+    const fin = p.status === "finished" && !state.spinning;
+    const winKey = fin ? p.winner_key : null;
+
+    // сектора
+    let cur = -Math.PI / 2 + rot;
+    const borders = [];
+    stakes.forEach((s, i) => {
+      const arc = s.amount / total * TAU, slot = wheelSlot(stakes, i, winKey);
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, r, cur, cur + arc); ctx.closePath();
+      ctx.fillStyle = slotColor(P, slot); ctx.fill();
+      if (fin && slot !== "win") { ctx.fillStyle = P.dim; ctx.fill(); }
+      borders.push(cur);
+      cur += arc;
+    });
+    shadeDisc(ctx, P, cx, cy, r);
+
+    // границы: тёмная линия + светлая фаска рядом
+    if (stakes.length > 1) {
+      borders.forEach((a) => {
+        const x = Math.cos(a), y = Math.sin(a), hi = a + 1.4 / r;
+        ctx.beginPath(); ctx.moveTo(cx + x * r * 0.18, cy + y * r * 0.18); ctx.lineTo(cx + x * r, cy + y * r);
+        ctx.strokeStyle = P.sep; ctx.lineWidth = 2; ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx + Math.cos(hi) * r * 0.2, cy + Math.sin(hi) * r * 0.2);
+        ctx.lineTo(cx + Math.cos(hi) * r, cy + Math.sin(hi) * r);
+        ctx.strokeStyle = P.sepHi; ctx.lineWidth = 1; ctx.stroke();
+      });
+    }
+    // кромка между ободом и секторами
+    disc(); ctx.strokeStyle = P.sep; ctx.lineWidth = 2; ctx.stroke();
+    // штифты на ободе у каждой границы — о них «отбивает» стрелка
+    const pegR = Math.max(2.2, rimW * 0.24), pegD = r + rimW / 2;
+    borders.forEach((a) => {
+      const x = cx + Math.cos(a) * pegD, y = cy + Math.sin(a) * pegD;
+      ctx.beginPath(); ctx.arc(x, y + 0.8, pegR, 0, TAU); ctx.fillStyle = "rgba(0,0,0,.35)"; ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, pegR, 0, TAU); ctx.fillStyle = P.peg; ctx.fill();
+    });
+
+    // подписи: аватар или процент поперёк радиуса, всегда читаются сверху вниз
+    const fs = Math.round(Math.max(13, Math.min(26, S * 0.062))), dist = r * 0.7;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    cur = -Math.PI / 2 + rot;
+    stakes.forEach((s, i) => {
+      const arc = s.amount / total * TAU, ma = cur + arc / 2, slot = wheelSlot(stakes, i, winKey);
+      cur += arc;
+      if (arc * dist < fs * 1.3) return; // узкий сектор — без подписи (участник есть в списке ниже)
+      ctx.save();
+      ctx.translate(cx + Math.cos(ma) * dist, cy + Math.sin(ma) * dist);
+      ctx.rotate(Math.sin(ma) > 0 ? ma - Math.PI / 2 : ma + Math.PI / 2); // в нижней половине — не вверх ногами
+      ctx.globalAlpha = fin && slot !== "win" ? 0.55 : 1;
+      if (state.wheelMode === "av") {
+        ctx.font = `${fs}px ${EMOJI_FONT}`; ctx.fillStyle = "#000";
+        ctx.fillText(s.avatar, 0, 0);
+      } else {
+        ctx.font = `700 ${Math.round(fs * 0.66)}px "JetBrains Mono", monospace`;
+        ctx.fillStyle = slot === "win" ? P.winInk : slot === "me" ? P.meInk : P.ink;
+        ctx.fillText(Math.round(s.amount / total * 100) + "%", 0, 0);
+      }
+      ctx.restore();
+    });
+  }
+  // объём: тень к ободу + свет сверху
+  function shadeDisc(ctx, P, cx, cy, r) {
+    const sh = ctx.createRadialGradient(cx, cy, r * 0.25, cx, cy, r);
+    sh.addColorStop(0, "rgba(0,0,0,0)"); sh.addColorStop(0.72, "rgba(0,0,0,0)"); sh.addColorStop(1, P.shade);
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, TAU); ctx.fillStyle = sh; ctx.fill();
+    const lg = ctx.createLinearGradient(0, cy - r, 0, cy + r);
+    lg.addColorStop(0, P.light); lg.addColorStop(0.55, "rgba(255,255,255,0)");
+    ctx.fillStyle = lg; ctx.fill();
   }
 
   function spinToWinner() {
-    const p = state.pool;
-    state.spinning = true; $("w-hub").textContent = "⏳";
-    const from = state.wheelRot, target = winnerAngle(p) + Math.PI * 2 * 9;
+    const p = state.pool, base = winnerAngle(p);
+    if (reducedMotion()) { state.wheelRot = base; renderWheel(false); return; }
+    state.spinning = true;
+    const from = state.wheelRot, target = base + TAU * (Math.ceil((from - base) / TAU) + 8);
     const dur = 6000, st = performance.now(), ease = (t) => 1 - Math.pow(1 - t, 4);
+    const ptr = $("w-ptr"), scr = $("sc-wheel");
+    let ptrDeg = 0, lastBorder = null, lastT = st, lastRot = from;
+    scr.classList.add("is-spinning");
+    const finish = () => { ptr.style.transform = ""; scr.classList.remove("is-spinning"); state.spinning = false; };
     (function fr(now) {
-      const t = Math.min((now - st) / dur, 1);
-      state.wheelRot = from + (target - from) * ease(t);
-      drawWheel(state.wheelRot);
-      if (t < 1 && state.pool === p) return requestAnimationFrame(fr);
-      state.spinning = false;
-      if (state.pool === p) { renderWheel(false); haptic(p.winner && p.winner.is_me ? "ok" : "medium"); }
+      if (state.pool !== p) return finish();
+      const t = Math.min((now - st) / dur, 1), rot = from + (target - from) * ease(t), dt = Math.max(1, now - lastT);
+      // стрелка: удар при каждой пройденной границе, сила — от скорости, затем пружинит обратно
+      const b = WheelMath.borderCount(p.stakes, rot);
+      if (lastBorder !== null && b !== lastBorder) ptrDeg = Math.max(-28, ptrDeg - Math.min(24, 7 + (rot - lastRot) / dt * 420));
+      ptrDeg *= Math.pow(0.84, dt / 16.7);
+      lastBorder = b; lastT = now; lastRot = rot;
+      ptr.style.transform = `rotate(${ptrDeg.toFixed(2)}deg)`;
+      state.wheelRot = rot;
+      drawWheel(rot);
+      if (t < 1) return requestAnimationFrame(fr);
+      finish();
+      renderWheel(false);
+      haptic(p.winner && p.winner.is_me ? "ok" : "medium");
     })(st);
   }
 
   function renderWheel(animate) {
-    const p = state.pool, live = p.status === "live";
-    $("det-hero").className = "det-hero " + p.art;
-    $("det-em").textContent = p.emoji; $("w-hub").textContent = p.emoji;
+    const p = state.pool, live = p.status === "live", fin = p.status === "finished";
+    const spin = animate && fin && p.stakes.length > 0 && !reducedMotion();
+    mountGift($("det-gift"), p, "vl-rd-pic", true);
+    mountGift($("w-hub"), p, "vl-wh-hub-pic", false);
     $("det-name").textContent = p.title; $("det-org").textContent = p.organizer;
-    $("det-status").textContent = live ? "Live" : (p.status === "finished" ? "Завершён" : "Отменён");
-    $("det-min").textContent = p.min_stake;
-    $("det-part").textContent = p.participants + " чел.";
-    $("det-chance").textContent = (p.my_chance || 0) + "%";
+    setStatus($("det-status"), p);
+    $("det-min").textContent = fmt(p.min_stake);
     $("det-bank").textContent = fmt(p.bank);
-    $("det-pf").style.width = Math.min(100, timeBar(p)) + "%";
-    $("det-timer").dataset.ends = ""; $("det-timer").textContent = live ? hms(p.ends_ts - nowTs()) : "—";
+    $("det-part").textContent = fmt(p.participants);
+    $("det-mine").textContent = fmt(p.my_total);
+    $("det-chance").textContent = fmtPct(p.my_chance);
+    $("det-pf").style.width = (live ? Math.min(100, timeBar(p)) : 100) + "%";
+    $("det-time-lbl").textContent = live ? "До розыгрыша" : (fin ? "Разыгран" : "Отменён");
+    $("det-timer").textContent = live ? hms(p.ends_ts - nowTs()) : (p.ends_ts ? ago(p.ends_ts) : "—");
     $("det-buy").classList.toggle("hid", !live || p.is_organizer);
     $("det-cancel").classList.toggle("hid", !(live && p.is_organizer && !p.stakes.length));
     $("wheel-cd").classList.toggle("hid", !live);
     $("wheel-fair").innerHTML = fairHtml(p);
 
-    $("stakes-lbl").textContent = `📋 Ставки (${p.stakes.length} участн.)`;
-    $("stakes-list").innerHTML = p.stakes.length ? p.stakes.map((s, i) => `
-      <div class="stake-row ${!state.spinning && p.winner_key === s.key && !live ? "win" : ""}">
-        <div class="s-oct" style="background:${PAL[i % PAL.length]}55">${esc(s.avatar)}</div>
-        <div class="s-name">${esc(s.name)}${s.is_me ? " · ты" : ""}</div>
-        <div class="s-val">${STAR} ${fmt(s.amount)}</div>
-      </div>`).join("") : `<div class="empty-note">Ставок пока нет</div>`;
+    const total = WheelMath.total(p.stakes), winKey = fin && !spin ? p.winner_key : null;
+    $("stakes-lbl").textContent = p.stakes.length ? `Ставки · ${p.stakes.length}` : "Ставки";
+    $("stakes-list").innerHTML = p.stakes.length ? p.stakes.map((s, i) => {
+      const slot = wheelSlot(p.stakes, i, winKey);
+      return `<li class="vl-stake${slot === "win" ? " is-win" : ""}${s.is_me ? " is-me" : ""}">
+        <i class="vl-stake-sw" style="background:var(--vl-wh-${slot})" aria-hidden="true"></i>
+        <span class="vl-stake-av" aria-hidden="true">${esc(s.avatar)}</span>
+        <span class="vl-stake-n">${esc(s.name)}${s.is_me ? YOU : ""}</span>
+        <span class="vl-stake-pct num">${fmtPct(s.amount / total * 100)}</span>
+        <b class="vl-stake-v num">${fmt(s.amount)}</b></li>`;
+    }).join("") : `<li class="vl-list-empty">Ставок пока нет — первая ставка займёт всё колесо</li>`;
 
-    if (animate && p.status === "finished" && p.stakes.length) { $("det-winner").classList.remove("on"); return spinToWinner(); }
-    if (p.status === "finished") state.wheelRot = winnerAngle(p);
+    sizeWheel();
+    if (spin) { showWinner($("det-winner"), null); return spinToWinner(); }
+    if (fin) state.wheelRot = winnerAngle(p);
     drawWheel(state.wheelRot);
-    const w = $("det-winner");
-    if (p.status === "finished" && p.winner) {
-      $("det-wt").textContent = p.winner.is_me ? "Ты победил! 🎉" : "Победитель: " + p.winner.name;
-      $("det-ws").textContent = p.winner.is_me ? "Подарок уже в твоём инвентаре" : "Подарок передан победителю";
-      w.classList.add("on");
-    } else w.classList.remove("on");
+    if (fin && p.winner) {
+      const ws = p.stakes.find((s) => s.key === p.winner_key);
+      showWinner($("det-winner"), p.winner.is_me ? "Ты выиграл подарок" : "Победитель — " + p.winner.name,
+        (p.winner.is_me ? "Подарок уже в твоём инвентаре" : "Подарок передан победителю")
+        + (ws && total ? ` · его доля была ${fmtPct(ws.amount / total * 100)}` : ""));
+    } else showWinner($("det-winner"), null);
     if (p.status === "cancelled") toast("Раунд отменён — ставок не было");
   }
 
+  // перерисовка при изменении размера окна, пересечении 860/861px и смене темы — слушатели ставятся один раз
+  function redrawWheel() {
+    const p = state.pool;
+    if (!p || p.mode !== "wheel" || !$("sc-wheel").classList.contains("on")) return;
+    if (sizeWheel() && !state.spinning) drawWheel(state.wheelRot);
+  }
+  window.addEventListener("resize", redrawWheel); // браузер шлёт resize не чаще раза за кадр
+  if (window.matchMedia) {
+    const mqDesk = window.matchMedia("(min-width: 861px)");
+    if (mqDesk.addEventListener) mqDesk.addEventListener("change", redrawWheel); else if (mqDesk.addListener) mqDesk.addListener(redrawWheel);
+  }
+  new MutationObserver(() => { wheelPal = null; redrawWheel(); })
+    .observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(redrawWheel);
+
   // ---------------------------------------------------------------- сейф
+  const vaultCode = (v, max) => {
+    const w = String(max || 100).length, n = parseInt(v, 10);
+    return n > 0 ? String(n).padStart(w, "0") : Array(w).fill("–").join(" ");
+  };
+  // выбор числа (клетка поля или ввод): показать на табло двери и отметить клетку
+  function vaultPick() {
+    const p = state.pool; if (!p || p.mode !== "vault" || p.status !== "live") return;
+    const v = parseInt($("vt-num").value, 10);
+    $("vt-display").textContent = vaultCode(v, p.vault_max);
+    $("vt-grid").querySelectorAll(".vl-vc.is-picked").forEach((c) => c.classList.remove("is-picked"));
+    const cell = $("vt-grid").querySelector(`[data-num="${v}"]`);
+    if (cell) cell.classList.add("is-picked");
+  }
+
   function renderVault() {
-    const p = state.pool, live = p.status === "live";
-    $("vt-img").className = "ghc-thumb " + p.art; $("vt-img").textContent = p.emoji;
-    $("vt-name").textContent = p.title;
-    $("vt-org").textContent = "Организатор " + p.organizer;
+    const p = state.pool, live = p.status === "live", fin = p.status === "finished";
+    mountGift($("vt-gift"), p, "vl-rd-pic", !fin);
+    mountGift($("vt-prize"), p, "vl-safe-pic", fin); // после вскрытия анимация играет внутри сейфа
+    $("vt-name").textContent = p.title; $("vt-org").textContent = p.organizer;
+    setStatus($("vt-status"), p);
+    $("vt-min").textContent = fmt(p.min_stake);
     $("vt-bank").textContent = fmt(p.bank);
-    $("vt-hint").innerHTML = `Число от <b>1</b> до <b>${p.vault_max}</b> · ставка <b>${p.min_stake}</b> ${STAR} за попытку<br>Занято чисел: <b>${p.taken}</b>`;
+    $("vt-part").textContent = fmt(p.participants);
+    $("vt-taken").textContent = `${fmt(p.taken)} / ${fmt(p.vault_max)}`;
+    $("vt-hint").innerHTML = live
+      ? `Угадай число от <b class="num">1</b> до <b class="num">${fmt(p.vault_max)}</b>. Попытка стоит <b class="num">${fmt(p.min_stake)}</b> VLD и уходит в банк; угадавший сразу забирает подарок.`
+      : fin ? "Сейф вскрыт. Секретное число и seed раскрыты — результат можно проверить." : "Раунд отменён.";
     $("vt-num").max = p.vault_max;
     $("vt-form").classList.toggle("hid", !live || p.is_organizer);
     $("vt-cancel").classList.toggle("hid", !(live && p.is_organizer && !p.numbers.length));
-    $("vault-safe").classList.toggle("open", p.status === "finished");
-    $("vt-g-taken").textContent = p.numbers.length;
+
+    const safe = $("vault-safe");
+    if (state.poolFresh) { // открытый раунд показываем сразу в итоговом состоянии, без анимации двери
+      safe.classList.add("vl-noanim");
+      requestAnimationFrame(() => requestAnimationFrame(() => safe.classList.remove("vl-noanim")));
+    }
+    safe.classList.toggle("is-open", fin);
+    safe.classList.toggle("is-shut", !live && !fin);
+    // секретное число есть в ответе только после завершения; до этого на табло — выбранное игроком число
+    $("vt-display").textContent = fin && p.secret != null ? vaultCode(p.secret, p.vault_max) : vaultCode($("vt-num").value, p.vault_max);
+    $("vt-g-taken").textContent = `${fmt(p.numbers.length)} из ${fmt(p.vault_max)}`;
     $("vault-fair").innerHTML = fairHtml(p);
 
+    const picked = parseInt($("vt-num").value, 10), canTry = live && !p.is_organizer;
+    // поле пересобирается только когда что-то изменилось (опрос раз в 4 с не сбрасывает наведение и фокус)
+    const grid = $("vt-grid"), gridKey = JSON.stringify([p.id, p.vault_max, canTry, p.numbers]);
+    if (grid._key !== gridKey) { grid._key = gridKey; renderVaultGrid(p, picked, canTry); }
+    $("vt-feed").innerHTML = p.numbers.length ? p.numbers.slice().reverse().slice(0, 12).map((n) => `
+      <li class="vl-feed-row${n.win ? " is-win" : ""}">
+        <b class="num">${esc(n.number)}</b><span class="vl-feed-n">${esc(n.name)}${n.is_me ? YOU : ""}</span>
+        <span class="vl-feed-r">${n.win ? "вскрыл" : "мимо"}</span>
+      </li>`).join("") : `<li class="vl-list-empty">Попыток пока не было</li>`;
+
+    if (fin && p.winner) {
+      showWinner($("vt-winner"), p.winner.is_me ? "Ты вскрыл сейф" : "Сейф вскрыл " + p.winner.name,
+        `Секретное число — ${p.secret}. ${p.winner.is_me ? "Подарок уже в твоём инвентаре." : "Подарок передан победителю."}`);
+    } else showWinner($("vt-winner"), null);
+  }
+
+  function renderVaultGrid(p, picked, canTry) {
     const taken = new Map(p.numbers.map((n) => [n.number, n]));
+    const focusNum = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.num : null;
     let cells = "";
     for (let i = 1; i <= p.vault_max; i++) {
       const t = taken.get(i);
       cells += t
-        ? `<div class="vg-cell taken ${t.is_me ? "mine" : ""} ${t.win ? "win" : ""}">${i}<span class="vg-who">${esc(t.name)}</span></div>`
-        : `<div class="vg-cell" data-num="${i}">${i}</div>`;
+        ? `<div class="vl-vc is-taken${t.is_me ? " is-mine" : ""}${t.win ? " is-win" : ""}" title="${i} — ${esc(t.name)}"
+            aria-label="Число ${i}: ${esc(t.name)}${t.win ? ", угадал" : ", мимо"}"><b>${i}</b><span>${esc(t.name)}</span></div>`
+        : `<button type="button" class="vl-vc${i === picked ? " is-picked" : ""}" data-num="${i}"${canTry ? "" : " disabled"} aria-label="Число ${i}">${i}</button>`;
     }
     $("vt-grid").innerHTML = cells;
-    $("vt-feed").innerHTML = p.numbers.slice().reverse().slice(0, 12).map((n) => `
-      <div class="vf-row ${n.win ? "win" : "miss"}">
-        <span class="vf-n">${n.number}</span><span>${esc(n.name)}${n.is_me ? " · ты" : ""}</span>
-        <span class="vf-badge">${n.win ? "Вскрыл!" : "Мимо"}</span>
-      </div>`).join("");
-
-    const w = $("vt-winner");
-    if (p.status === "finished" && p.winner) {
-      $("vt-wt").textContent = p.winner.is_me ? "Ты вскрыл сейф! 🎉" : "Сейф вскрыл " + p.winner.name;
-      $("vt-ws").textContent = `Секретное число — ${p.secret}. Подарок передан победителю.`;
-      w.classList.add("on");
-    } else w.classList.remove("on");
+    if (focusNum) { const f = $("vt-grid").querySelector(`[data-num="${focusNum}"]`); if (f) f.focus({ preventScroll: true }); }
   }
 
   let vaultBusy = false;
@@ -430,38 +669,66 @@
       const r = await api(`/api/pools/${p.id}/vault`, { number: num });
       setBalance(r.balance);
       $("vt-num").value = "";
-      if (r.hit) { haptic("ok"); toast("🎉 Сейф вскрыт! Подарок твой"); }
-      else {
-        haptic("error"); safe.classList.add("shaking");
-        setTimeout(() => safe.classList.remove("shaking"), 500);
-        toast(`Число ${num} — мимо`);
-      }
+      if (r.hit) { haptic("ok"); toast("Сейф вскрыт — подарок твой"); }
+      else { haptic("error"); toast(`Число ${num} — мимо`); }
       applyPool(r.pool, false);
+      if (!r.hit) { // промах: дверь вздрагивает, табло на мгновение показывает неверный код
+        safe.classList.remove("is-miss"); void safe.offsetWidth; safe.classList.add("is-miss");
+        $("vt-display").textContent = vaultCode(num, p.vault_max);
+        clearTimeout(safe._miss);
+        safe._miss = setTimeout(() => { safe.classList.remove("is-miss"); vaultPick(); }, 900);
+      }
     } catch (e) { toast(e.message); haptic("error"); }
     vaultBusy = false;
   }
 
   // ---------------------------------------------------------------- аукцион
-  function renderAuction() {
-    const p = state.pool, live = p.status === "live";
-    $("auc-img").className = "ghc-thumb " + p.art; $("auc-img").textContent = p.emoji;
-    $("auc-name").textContent = p.title;
-    $("auc-org").textContent = "Организатор " + p.organizer + " · победитель забирает подарок";
-    $("auc-mine-val").innerHTML = p.my_total ? `${fmt(p.my_total)} ${STAR}` : "— (ещё не ставил)";
-    $("auc-amt").placeholder = p.min_stake + "+"; $("auc-amt").min = p.min_stake;
+  function renderAuction(animate) {
+    const p = state.pool, live = p.status === "live", fin = p.status === "finished";
+    mountGift($("auc-gift"), p, "vl-rd-pic", true);
+    $("auc-name").textContent = p.title; $("auc-org").textContent = p.organizer;
+    setStatus($("auc-status"), p);
+    $("auc-min").textContent = fmt(p.min_stake);
+    // слепой аукцион: пока идёт, банк и чужие ставки не выводятся вовсе
+    $("auc-bank").innerHTML = live || p.bank == null ? HIDDEN : `<span class="num">${fmt(p.bank)}</span><small>VLD</small>`;
+    $("auc-part").innerHTML = p.participants == null ? HIDDEN : `<span class="num">${fmt(p.participants)}</span>`;
+    $("auc-mine-val").innerHTML = p.my_total ? `<span class="num">${fmt(p.my_total)}</span><small>VLD</small>`
+      : `<span class="vl-rd-muted">ещё не ставил</span>`;
+    $("auc-amt").placeholder = `от ${p.min_stake} VLD`; $("auc-amt").min = p.min_stake;
     $("auc-form").classList.toggle("hid", !live || p.is_organizer);
     $("auc-cancel").classList.toggle("hid", !(live && p.is_organizer && !p.my_total && p.bank === 0));
-    $("auc-blackout").classList.toggle("hid", !live);
-    $("auc-cd-card").classList.toggle("hid", !live);
     $("auc-cd").dataset.ends = live ? p.ends_ts : "";
-    $("auction-fair").innerHTML = live ? "" : `<b>Раскрытие</b>Все накопленные ставки открыты. Побеждает наибольшая; при равенстве — кто достиг её раньше.`;
-    const res = $("auc-result");
-    if (p.status === "finished" && p.bids) {
-      res.classList.remove("hid");
-      res.innerHTML = `<b>${p.winner && p.winner.is_me ? "Ты победил! 🎉" : "Победитель: " + esc(p.winner ? p.winner.name : "—")}</b> · банк ${fmt(p.bank)} ${STAR}`
-        + p.bids.map((b, i) => `<div class="rr ${i === 0 ? "top" : ""}"><span>${i + 1}. ${esc(b.name)}${b.is_me ? " · ты" : ""}</span><span>${fmt(b.amount)}</span></div>`).join("");
-    } else if (p.status === "cancelled") { res.classList.remove("hid"); res.textContent = "Раунд отменён — ставок не было."; }
-    else res.classList.add("hid");
+    $("auc-cd").textContent = live ? hms(p.ends_ts - nowTs()) : "—";
+    $("auction-fair").innerHTML = fairHtml(p);
+
+    const stage = $("auc-stage"), board = $("auc-result"), shut = $("auc-blackout");
+    if (live) { board.innerHTML = ""; shut.classList.remove("is-open"); return; }
+    if (fin && p.bids) {
+      const w = p.winner;
+      board.innerHTML = `<div class="vl-auc-res">
+          <span class="vl-win-ic">${icon("i-leaders")}</span>
+          <div class="vl-win-txt"><div class="vl-win-t">${w ? (w.is_me ? "Ты выиграл подарок" : "Победитель — " + esc(w.name)) : "Победителя нет"}</div>
+          <div class="vl-win-s">Банк <b class="num">${fmt(p.bank)}</b> VLD · ставок: <b class="num">${fmt(p.bids.length)}</b></div></div>
+        </div>
+        <ol class="vl-bids">${p.bids.map((b, i) => `
+          <li class="vl-bid${i === 0 ? " is-top" : ""}${b.is_me ? " is-me" : ""}">
+            <span class="vl-bid-r num">${i + 1}</span><span class="vl-bid-n">${esc(b.name)}${b.is_me ? YOU : ""}</span>
+            <b class="vl-bid-v num">${fmt(b.amount)}</b>
+          </li>`).join("")}</ol>`;
+    } else board.innerHTML = `<p class="vl-auc-empty">Раунд отменён — ставок не было.</p>`;
+
+    // раскрытие: шторка уезжает вверх, ставки появляются по одной (при открытии раунда и в момент завершения)
+    if ((state.poolFresh || animate) && !reducedMotion()) {
+      stage.classList.add("vl-noanim"); shut.classList.remove("is-open");
+      void stage.offsetWidth;
+      stage.classList.remove("vl-noanim");
+      requestAnimationFrame(() => shut.classList.add("is-open"));
+      board.querySelectorAll(".vl-bid").forEach((el, i) => {
+        if (typeof el.animate !== "function") return;
+        el.animate([{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }],
+          { duration: 320, delay: 620 + Math.min(i, 12) * 160, easing: "cubic-bezier(.2,.7,.2,1)", fill: "backwards" });
+      });
+    } else shut.classList.add("is-open");
   }
 
   async function placeBid() {
@@ -471,7 +738,7 @@
     try {
       const r = await api(`/api/pools/${p.id}/bid`, { amount: amt });
       setBalance(r.balance); $("auc-amt").value = "";
-      haptic("ok"); toast("Ставка доставлена 🕶");
+      haptic("ok"); toast("Ставка принята — она скрыта до раскрытия");
       applyPool(r.pool, false);
     } catch (e) { toast(e.message); haptic("error"); }
   }
@@ -502,7 +769,7 @@
     try {
       const r = await api(`/api/pools/${p.id}/stake`, { amount: stakeValue() });
       setBalance(r.balance); closeOv("stake-modal");
-      haptic("ok"); toast("Ставка принята ✅");
+      haptic("ok"); toast("Ставка принята");
       applyPool(r.pool, false);
     } catch (e) { toast(e.message); haptic("error"); }
   }
@@ -991,7 +1258,9 @@
     }
     if ((el = t("[data-wmode]"))) {
       state.wheelMode = el.dataset.wmode;
-      document.querySelectorAll("[data-wmode]").forEach((b) => b.classList.toggle("on", b === el));
+      document.querySelectorAll("[data-wmode]").forEach((b) => {
+        b.classList.toggle("on", b === el); b.setAttribute("aria-pressed", String(b === el));
+      });
       return drawWheel(state.wheelRot);
     }
     if ((el = t("[data-lb]"))) {
@@ -1003,7 +1272,7 @@
     if ((el = t("[data-gift]"))) { state.create.gift = +el.dataset.gift; return loadCreate(); }
     if ((el = t("[data-gift-wd]"))) return giftWithdraw(+el.dataset.giftWd);
     if ((el = t("[data-pt]"))) return switchPT(el.dataset.pt);
-    if ((el = t("[data-num]"))) { $("vt-num").value = el.dataset.num; return; }
+    if ((el = t("[data-num]"))) { $("vt-num").value = el.dataset.num; return vaultPick(); }
     if ((el = t(".chips .chip"))) {
       el.parentElement.querySelectorAll(".chip").forEach((c) => c.classList.remove("on"));
       return el.classList.add("on");
@@ -1019,6 +1288,9 @@
 
   $("sm-slider").addEventListener("input", (e) => { $("sm-input").value = ""; stakeSync(+e.target.value); });
   $("sm-input").addEventListener("input", (e) => stakeSync(parseInt(e.target.value, 10) || 0));
+  $("vt-num").addEventListener("input", vaultPick);
+  $("vt-num").addEventListener("keydown", (e) => { if (e.key === "Enter") tryVault(); });
+  $("auc-amt").addEventListener("keydown", (e) => { if (e.key === "Enter") placeBid(); });
   $("tr-recipient").addEventListener("input", transferLookup);
   $("tr-amount").addEventListener("input", transferCalc);
   $("po-amount").addEventListener("input", payoutCalc);

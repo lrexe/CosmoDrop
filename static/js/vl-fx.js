@@ -15,6 +15,13 @@
                                     by CSS (the element gets transform-style: preserve-3d via CSS).
      VLFx.countUp(el, to, ms?)     — animates el's number to `to` (ru-RU grouping); instant with reduced motion.
      VLFx.stagger(container)       — children fade/slide in one after another (≤ 40ms step); off with reduced motion.
+     VLFx.lottie(el, src, opts?) -> {destroy()}
+                                   — plays the lottie JSON at `src` inside `el` (opts.loop, default true) on a layer
+                                    (div.vl-anim) over the static picture already in `el`; `el` gets .vl-anim-on once the
+                                    first frame is drawn (CSS fades the layer in). lottie-web 5.12.2 is loaded lazily, once,
+                                    from cdnjs. Any failure (script blocked, 404, bad JSON) removes the layer and leaves the
+                                    picture; it never throws. Reduced motion: first frame only, no autoplay.
+                                    destroy() is idempotent and safe before the animation has loaded.
 */
 (function () {
   "use strict";
@@ -154,6 +161,70 @@
     });
   }
 
-  window.VLFx = { tilt, countUp, stagger, giftImg, imgFail };
+  // ------------------------------------------------------------------ gift animation (lottie)
+  const LOTTIE_URL = "https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js";
+  let lottieLib = null; // Promise<lottie> — the script is requested once per page, a failure is remembered too
+  function loadLottie() {
+    if (!lottieLib) {
+      lottieLib = new Promise((resolve, reject) => {
+        if (window.lottie && window.lottie.loadAnimation) { resolve(window.lottie); return; }
+        const s = document.createElement("script");
+        s.src = LOTTIE_URL;
+        s.async = true;
+        s.onload = () => (window.lottie && window.lottie.loadAnimation ? resolve(window.lottie) : reject(new Error("lottie")));
+        s.onerror = () => reject(new Error("lottie script"));
+        document.head.appendChild(s);
+      });
+      lottieLib.catch(() => {}); // a rejected load is handled by every caller; never an unhandled rejection
+    }
+    return lottieLib;
+  }
+
+  function lottie(el, src, opts) {
+    const handle = { destroyed: false, anim: null, layer: null };
+    const api = {
+      destroy() {
+        if (handle.destroyed) return;
+        handle.destroyed = true;
+        try { if (handle.anim) handle.anim.destroy(); } catch (e) {}
+        if (handle.layer && handle.layer.parentNode) handle.layer.remove();
+        if (el && el.classList) el.classList.remove("vl-anim-on");
+        handle.anim = handle.layer = null;
+      },
+    };
+    if (!el || !src) return api;
+    const loop = !opts || opts.loop !== false;
+    const still = reduced();
+    const fail = () => api.destroy(); // the static picture under the layer stays as it is
+
+    // the JSON is fetched here (not by lottie) so a 404 / bad JSON is a clean rejection, not a lottie error event
+    Promise.all([loadLottie(), fetch(src, { credentials: "same-origin" }).then((r) => {
+      if (!r.ok) throw new Error("anim " + r.status);
+      return r.json();
+    })]).then(([lib, data]) => {
+      if (handle.destroyed || !el.isConnected) return;
+      if (!data || !Array.isArray(data.layers)) throw new Error("anim data");
+      const layer = document.createElement("div");
+      layer.className = "vl-anim";
+      layer.setAttribute("aria-hidden", "true");
+      el.appendChild(layer);
+      handle.layer = layer;
+      const anim = lib.loadAnimation({
+        container: layer, renderer: "svg", loop, autoplay: !still, animationData: data,
+        rendererSettings: { preserveAspectRatio: "xMidYMid slice", progressiveLoad: true },
+      });
+      handle.anim = anim;
+      anim.addEventListener("data_failed", fail);
+      anim.addEventListener("error", fail);
+      anim.addEventListener("DOMLoaded", () => {
+        if (handle.destroyed) return;
+        if (still) anim.goToAndStop(0, true);
+        el.classList.add("vl-anim-on"); // CSS fades the layer in over the picture
+      });
+    }).catch(fail);
+    return api;
+  }
+
+  window.VLFx = { tilt, countUp, stagger, giftImg, imgFail, lottie };
   window.giftImg = giftImg;
 })();
