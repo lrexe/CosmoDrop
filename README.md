@@ -1,7 +1,8 @@
-# 🩸 Vloody
+# Vloody
 
 Telegram Mini App для честных PvP-розыгрышей NFT-подарков.
-Flask + SQLite (или PostgreSQL) на бэкенде, одностраничный интерфейс «графит + рубин».
+Flask + SQLite (или PostgreSQL) на бэкенде, одностраничный интерфейс без сборщика (HTML/CSS/JS)
+в голубой гамме: тёмная тема «Глубина» и светлая «Лёд», раскладки для телефона и десктопа.
 
 ## Модель
 
@@ -102,6 +103,54 @@ python -m venv .venv
 Открой **http://localhost:5000**. Без `BOT_TOKEN` включён демо-режим: один демо-пользователь,
 мгновенное пополнение и кнопка «получить демо-подарок».
 
+## 🎨 Темы и раскладки
+
+**Темы.** Тёмная (основная) и светлая: атрибут `data-theme="dark|light"` на `<html>`. Все цвета — токены
+в `static/css/vl-tokens.css`; без атрибута действуют значения тёмной темы. Тему выставляет `static/js/vl-theme.js`
+в `<head>`, до первой отрисовки. Порядок выбора:
+
+1. сохранённый выбор игрока — `localStorage["vl_theme"]` (если хранилище недоступно, выбор живёт в памяти до перезагрузки);
+2. тема Telegram (`Telegram.WebApp.colorScheme`), если приложение открыто в Telegram;
+3. системная тема (`prefers-color-scheme`);
+4. иначе тёмная.
+
+Переключатели — в верхней строке (телефон), в боковой панели (десктоп) и в профиле («Оформление»).
+Скрипт синхронизирует `<meta name="theme-color">` и цвет шапки Telegram с `--bg`.
+Админка (`/admin`) использует те же токены и свой переключатель.
+
+**Раскладки** (только CSS, порог в `static/css/vl-shell.css`):
+
+- **телефон, до 860px** — колонка, сверху строка с балансом, снизу навигация из 5 пунктов с центральной кнопкой «Создать»,
+  модальные окна — шторки снизу;
+- **десктоп, от 861px** — боковая панель 248px (разделы, баланс, тема), контент до 1180px по центру,
+  раунды сеткой в несколько колонок, экраны раунда и профиля в две колонки, модальные окна — диалоги по центру.
+
+Каркас (`templates/vloody.html`): `#app > #shell` → `aside#sidebar` (десктоп), `main#content` (демо-полоса,
+`header#topbar`, `#screens` — единственная прокручиваемая область), `nav#tabbar` (телефон). Экраны — `div.scr`,
+виден тот, у которого `.on`; смену анимирует `static/js/vl-fx.js` (до 220 мс). При `prefers-reduced-motion`
+движение и 3D отключаются, содержимое остаётся.
+
+## 🖼 Картинки подарков
+
+Показываются только настоящие картинки; если получить их не удалось — запасная плитка (градиент из названия и монограмма).
+
+| Что | Источник | Маршрут у нас |
+|-----|----------|---------------|
+| NFT-подарок | публичное хранилище Fragment: `<GIFT_CDN_BASE>/<slug>.medium.jpg`, `.webp`, `.lottie.json` (анимация) | `/gift-art/<slug>.jpg` · `.webp` · `.json` |
+| Обычный подарок за Stars | официальный Bot API `getAvailableGifts` (превью стикера в webp; нужен `BOT_TOKEN` или `RELAY_BOT_TOKEN`) | `/gift-art/regular/<id>.webp`; список — `GET /api/gifts/catalog` |
+
+- `slug` — уникальное имя NFT-подарка в нижнем регистре (например `plushpepe-1337`), хранится в `GiftItem.slug`;
+  бот-хранитель передаёт его при приёме подарка.
+- Картинки скачивает **сервер** (`bot/giftart.py`): проверяет формат slug, тип и размер ответа, редиректы не выполняет,
+  кладёт файл в дисковый кэш **`instance/gift_cache`** и отдаёт со своего адреса. Клиенты к Fragment и Telegram не ходят.
+- Это не открытый прокси: `/gift-art/<slug>` отдаёт только slug из нашей таблицы подарков, `/gift-art/regular/<id>` —
+  только id из каталога `getAvailableGifts`. Промах CDN запоминается на 10 минут, каталог — на 6 часов.
+- `GIFT_CDN_BASE` — адрес хранилища NFT-картинок (по умолчанию `https://nft.fragment.com/gift`).
+
+> ⚠️ **Риск.** `nft.fragment.com` — не официальный API Telegram, а публичное хранилище Fragment: оно может поменять адреса
+> или ограничить запросы. Поэтому кэш обязателен, а при сбое интерфейс показывает запасную плитку. Если адрес поменяется,
+> задай новый в `GIFT_CDN_BASE`. Изображения принадлежат Telegram и авторам коллекций; показываем их только для реальных подарков на платформе.
+
 ## 📦 Бот-хранитель подарков (`bot/relay.py`)
 
 Боты в Telegram не умеют получать подарки сами. Поэтому подарки принимает обычный аккаунт
@@ -148,6 +197,7 @@ RELAY_BOT_TOKEN=... RELAY_SECRET=... VLOODY_URL=https://твой-сервер py
 - `LEGACY_GAMES=1` — вернуть старые игры CosmoDrop (кейсы, ракета, мины, кости, апгрейд, колесо).
   По умолчанию выключены: в них платформа платила выигрыши сама.
 - `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` — PostgreSQL вместо SQLite.
+- `GIFT_CDN_BASE` — хранилище картинок NFT-подарков, см. «Картинки подарков».
 - `INIT_DATA_MAX_AGE`, `RATE_LIMIT`, `HOST`, `PORT`, `DEMO_TELEGRAM_ID` — прочее.
 
 ## 🔌 API
@@ -164,24 +214,58 @@ RELAY_BOT_TOKEN=... RELAY_SECRET=... VLOODY_URL=https://твой-сервер py
 | POST | `/api/wallet/ton/intent` · `/api/wallet/ton/check` | адрес и комментарий для перевода TON · проверка зачисления |
 | POST | `/api/transfer` · `/api/payout` | перевод другу · заявка на вывод |
 | GET | `/api/leaderboard/<day\|week\|month\|all>` · `/api/winners` | лидеры по обороту · победители |
+| GET | `/api/gifts/catalog` | каталог обычных подарков за Stars (id, цена, картинка) |
+| GET | `/gift-art/<slug>.<jpg\|webp\|json>` · `/gift-art/regular/<id>.webp` | картинки подарков из кэша (без подписи, только известные подарки) |
 | POST | `/api/relay/gift-deposit` · `/gift-delivered` · `/gift-failed`, GET `/api/relay/withdrawals` | бот-хранитель: приём, выдача, возврат |
 | GET · POST | `/api/admin/stats` · `/payouts` · `/pools` · `/pools/<id>/refund` · `/users` · `/gifts` · `/revenue` · `/ton/scan` | админ-панель |
 | POST | `/api/telegram_payment` | вебхук оплаты Telegram Stars |
 
+## 🧪 Тесты
+
+```bash
+.venv/Scripts/python tests/run_all.py     # все наборы, по строке итога на каждый
+.venv/Scripts/python tests/vtest.py       # любой набор можно запустить отдельно
+```
+
+Внешние сервисы (Telegram Bot API, блокчейн-API TON, CDN картинок) в наборах заменены имитациями.
+
+| Набор | Что проверяет |
+|-------|---------------|
+| `vtest` | сквозной сценарий в боевом режиме: эскроу подарка, колесо, сейф, аукцион, выплаты, сходимость денег |
+| `tontest` | VLD и TON: пополнение (адрес и комментарий, зачисление по факту, без двойных зачислений), покупка за Stars, вывод с комиссией |
+| `relaytest` | бот-хранитель: приём NFT-подарков (со slug и картинкой), выдача, возврат |
+| `admintest` | админ-API: доступ только по секрету, разделы, отмена раунда с возвратом |
+| `maintest` | подключение основного бота: вебхук с секретом, кнопка меню, `/start`, файл `.env` |
+| `test_giftart` | картинки подарков: проверка slug, кэш, 404, сбой и редиректы CDN, каталог обычных подарков |
+| `test_contrast` | парсит `vl-tokens.css`: контраст текста не ниже WCAG AA в обеих темах (включая статусы и плейсхолдеры), полнота токенов, тёмная тема без атрибута, цвет шапки в `vl-theme.js` |
+
 ## 📁 Структура
 
 ```
-app.py                — приложение, конфиг, вебхук оплаты, флаг LEGACY_GAMES
+app.py                — приложение, конфиг, вебхук оплаты, маршруты /gift-art, флаг LEGACY_GAMES
 models.py             — User, GiftItem, Pool, PoolEntry, LedgerTx, PayoutRequest (+ модели старых игр)
+seed.py               — демо-данные: игроки, подарки с настоящими slug, раунды всех режимов
 bot/vloody.py         — API Vloody: раунды, кошелёк, лидеры, бот-хранитель, админ
+bot/giftart.py        — картинки подарков: Fragment CDN и каталог Bot API, кэш instance/gift_cache
 bot/auth.py           — подпись initData, служебные секреты, лимит запросов
 bot/vloody_seed.py    — демо-раунды
 bot/relay.py          — бот-хранитель подарков (эскроу через Telegram Business)
 bot/bot.py            — Telegram-бот с приветствием (токен из BOT_TOKEN)
-templates/vloody.html — одностраничное приложение
+templates/vloody.html — одностраничное приложение; templates/_icons.html — набор SVG-иконок
 templates/admin.html  — админ-панель (`/admin`)
-static/css/vloody.css, vloody-app.css · static/js/vloody.js
-bot/cases.py, games.py, arcade.py, engine.py + старые шаблоны — CosmoDrop (LEGACY_GAMES=1)
+static/css/vl-tokens.css   — токены обеих тем: цвета, радиусы, шрифты, тени
+static/css/vl-base.css     — база: кнопки, поля, чипы, иконки, скелетоны, reduced-motion
+static/css/vl-shell.css    — сброс стилей, каркас (боковая панель, верхняя строка, нижняя навигация), тост, заставка
+static/css/vl-cards.css    — главная: фильтры, карточки раундов, картинки подарков
+static/css/vl-rounds.css   — экраны раундов: колесо, сейф, аукцион
+static/css/vl-screens.css  — создание раунда, лидеры, профиль
+static/css/vl-overlays.css — модальные окна
+static/js/vloody.js   — логика приложения
+static/js/vl-fx.js    — движение и 3D: переходы, появление списков, счётчики, наклон, конфетти, lottie, картинки подарков
+static/js/vl-theme.js — выбор и переключение темы
+tests/                — наборы проверок и run_all.py
+docs/superpowers/     — спецификация и план редизайна
+bot/cases.py, games.py, arcade.py, engine.py + старые шаблоны и static/css|js (app, cases, main, …) — CosmoDrop (LEGACY_GAMES=1)
 ```
 
 ## 🚧 Что ещё не сделано
