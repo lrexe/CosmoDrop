@@ -48,9 +48,11 @@ def expire(pool_id):
         db.session.commit()
 
 
-def deposit_gift(who, name, tg_id):
-    r = c.post("/api/relay/gift-deposit", headers=RELAY,
-               json={"telegram_id": IDS[who], "name": name, "emoji": "🐸", "tg_gift_id": tg_id})
+def deposit_gift(who, name, tg_id, slug=None):
+    body = {"telegram_id": IDS[who], "name": name, "emoji": "🐸", "tg_gift_id": tg_id}
+    if slug:
+        body["slug"] = slug
+    r = c.post("/api/relay/gift-deposit", headers=RELAY, json=body)
     return r.get_json()["gift"]["id"]
 
 
@@ -155,7 +157,7 @@ check("хеш сейфа совпадает с раскрытым числом",
 check("с игрока списано ровно попытки × ставка", b0 - bal("bob") == tries * 10, (b0 - bal("bob"), tries))
 
 # ---------- аукцион
-g3 = deposit_gift("org", "Jelly Rabbit #3", "tg-g3")
+g3 = deposit_gift("org", "Jelly Rabbit #3", "tg-g3", slug="jellybunny-42")
 auc = post("org", "/api/pools", {"mode": "auction", "gift_id": g3, "min_stake": 20, "duration_min": 15}).get_json()
 post("bob", f"/api/pools/{auc['id']}/bid", {"amount": 200})
 post("cat", f"/api/pools/{auc['id']}/bid", {"amount": 150})
@@ -167,6 +169,15 @@ expire(auc["id"])
 a = get("dan", f"/api/pools/{auc['id']}").get_json()
 check("при равенстве побеждает достигший суммы раньше", a["winner"]["name"] == "@bob", a["winner"])
 check("после раскрытия видны все ставки", a["bank"] == 400 and len(a["bids"]) == 2)
+
+# ---------- лента победителей: настоящая картинка подарка
+wins = {w["pool_id"]: w for w in get("dan", "/api/winners").get_json()["items"]}
+wa, ww = wins.get(auc["id"], {}), wins.get(wheel["id"], {})
+check("победители: у подарка со slug есть картинка и анимация",
+      wa.get("image") == "/gift-art/jellybunny-42.jpg" and wa.get("anim") == "/gift-art/jellybunny-42.json", wa)
+check("победители: у подарка без slug image = None", "image" in ww and ww["image"] is None and ww.get("anim") is None, ww)
+check("победители: прежние ключи на месте",
+      all(k in wa for k in ("pool_id", "title", "emoji", "winner", "ts", "bank")) and wa.get("title") == "Jelly Rabbit #3", wa)
 
 # ---------- перевод
 b_b, b_d = bal("bob"), bal("dan")

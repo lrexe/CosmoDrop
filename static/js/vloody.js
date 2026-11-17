@@ -787,12 +787,6 @@
     return f[a > 10 && a < 20 ? 2 : b === 1 ? 0 : b >= 2 && b <= 4 ? 1 : 2];
   };
   const vld = (n) => `<span class="num">${fmt(n)}</span><small>VLD</small>`;
-  // картинка подарка для подарка без своего поля image (ленту победителей сервер отдаёт без картинки) —
-  // берём её из уже загруженных раундов; если раунда в кэше нет, giftImg покажет запасную плитку
-  function poolPic(id) {
-    const p = state.pools.live.concat(state.pools.finished).find((x) => x.id === id);
-    return p ? p.image : null;
-  }
 
   async function loadEvents() {
     try {
@@ -838,7 +832,7 @@
 
       $("winners-list").innerHTML = win.items.length ? win.items.map((w) => `
         <li><button type="button" class="vl-wf" data-pool="${+w.pool_id}">
-          <span class="vl-wf-pic">${giftImg({ image: poolPic(w.pool_id), title: w.title }, "vl-wf-img")}</span>
+          <span class="vl-wf-pic">${giftImg({ image: w.image, title: w.title }, "vl-wf-img")}</span>
           <span class="vl-wf-id">
             <span class="vl-wf-t" title="${esc(w.title)}">${esc(w.title)}</span>
             <span class="vl-wf-s"><b>${esc(w.winner)}</b> · ${ago(w.ts)}</span>

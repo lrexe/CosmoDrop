@@ -931,9 +931,13 @@ def leaderboard(period):
 def winners():
     rows = (Pool.query.filter(Pool.status == "finished", Pool.winner_id != None)  # noqa: E711
             .order_by(Pool.finished_at.desc()).limit(10).all())
-    return jsonify({"items": [{"pool_id": p.id, "title": p.gift.name, "emoji": p.gift.emoji,
-                               "winner": display_name(p.winner), "ts": ts(p.finished_at),
-                               "bank": p.bank} for p in rows]})
+    items = []
+    for p in rows:
+        art = p.gift.to_dict()  # картинка и анимация подарка — те же адреса, что в инвентаре
+        items.append({"pool_id": p.id, "title": p.gift.name, "emoji": p.gift.emoji,
+                      "winner": display_name(p.winner), "ts": ts(p.finished_at),
+                      "bank": p.bank, "image": art["image"], "anim": art["anim"]})
+    return jsonify({"items": items})
 
 
 # ================================================================== БОТ-ХРАНИТЕЛЬ (эскроу)
