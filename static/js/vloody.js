@@ -1431,7 +1431,7 @@
       try {
         const u = await api("/api/users/lookup?telegram_id=" + id);
         if ($("tr-recipient").value.trim() !== id) return;
-        st.innerHTML = icon("i-check"); st.append(" " + u.name); st.classList.add("ok"); // name goes in as text recipientOk = true;
+        st.innerHTML = icon("i-check"); st.append(" " + u.name); st.classList.add("ok"); recipientOk = true; // the name goes in as text
       } catch (e) { st.textContent = e.message; st.classList.add("err"); }
       transferCalc();
     }, 350);

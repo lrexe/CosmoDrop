@@ -86,5 +86,35 @@ check("every icon reference (<use href=\"#i-…\">, icon(\"i-…\"), \"i-…\" t
       "(%d used, %d symbols)" % (len(used_icons), len(symbols)), not bad_icons, bad_icons)
 check("sanity: symbols were found", len(symbols) > 20, len(symbols))
 
+# ---------------------------------------------------------------- (v) code swallowed by a trailing // comment
+# Regression class: `a(); // note b = 1;` — the statement after the comment never runs. Conservative heuristic: find a
+# `//` that is outside quotes/backticks and not part of a URL (`://`), and flag it only if an assignment-looking
+# statement (`ident = value;`) follows on the same line.
+def comment_start(line):
+    q = None
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if q:
+            if ch == "\\":
+                i += 1
+            elif ch == q:
+                q = None
+        elif ch in "\"'`":
+            q = ch
+        elif line.startswith("//", i) and not (i and line[i - 1] == ":"):
+            return i
+        i += 1
+    return -1
+
+
+swallowed = []
+for fname, src in js.items():
+    for n, line in enumerate(src.splitlines(), 1):
+        i = comment_start(line)
+        if i > 0 and line[:i].strip() and re.search(r"[A-Za-z_$][\w$.]*\s*=\s*[^=\s>][^;]*;\s*$", line[i + 2:]):
+            swallowed.append("%s:%d: %s" % (fname, n, line.strip()[:110]))
+check("no executable-looking assignment hides inside a trailing // comment", not swallowed, swallowed)
+
 print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)
