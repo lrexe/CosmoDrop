@@ -33,6 +33,7 @@ from flask import Blueprint, jsonify, request
 
 from models import db, User, GiftItem, Pool, PoolEntry, LedgerTx, PayoutRequest, TonDeposit
 from bot.cases import get_or_create_user, err
+from bot.giftart import SLUG_RE
 from bot.engine import gen_referral_code, level_from_xp, cum_xp
 from bot.auth import (
     BOT_TOKEN, DEMO_MODE, RELAY_SECRET, ADMIN_SECRET, clean_text, service_auth,
@@ -70,9 +71,17 @@ VAULT_SIZES = (25, 50, 100, 125)
 MIN_STAKE_RANGE = (1, 10000)
 ARTS = ("a1", "a2", "a3", "a4")
 
-DEMO_GIFTS = [("Plush Pepe", "🐸"), ("Evil Eye", "👁"), ("Vintage Cigar", "🚬"),
-              ("Jelly Rabbit", "🎭"), ("Astral Shard", "💎"), ("Durov's Cap", "🎩"),
-              ("Spring Basket", "🥚"), ("Witch Hat", "🕯️")]
+# (название, эмодзи, slug) — каждый slug проверен на CDN (nft.fragment.com/gift/<slug>.medium.jpg -> 200)
+DEMO_GIFTS = [("Plush Pepe", "🐸", "plushpepe-1337"), ("Evil Eye", "👁", "evileye-88"),
+              ("Vintage Cigar", "🚬", "vintagecigar-7"), ("Jelly Bunny", "🎭", "jellybunny-42"),
+              ("Astral Shard", "💎", "astralshard-404"), ("Durov's Cap", "🎩", "durovscap-9"),
+              ("Spring Basket", "🥚", "springbasket-21"), ("Witch Hat", "🕯️", "witchhat-1")]
+
+
+def clean_slug(raw):
+    """slug NFT-подарка (plushpepe-1337): только если проходит SLUG_RE, иначе None."""
+    slug = str(raw or "").strip().lower()
+    return slug if SLUG_RE.match(slug) else None
 
 
 # ------------------------------------------------------------------ хелперы
@@ -222,10 +231,12 @@ def pool_dict(pool, user, detail=False):
     bank = sum(e.amount for e in entries)
     participants = len({e.user_id for e in entries})
     gift = pool.gift
+    art = gift.to_dict()
 
     d = {
         "id": pool.id, "mode": pool.mode, "status": pool.status,
         "title": gift.name, "emoji": gift.emoji, "art": gift.art,
+        "image": art["image"], "anim": art["anim"],
         "min_stake": pool.min_stake,
         "ends_ts": ts(pool.ends_at), "created_ts": ts(pool.created_at), "now_ts": ts(now()),
         "organizer": display_name(pool.organizer), "is_organizer": pool.organizer_id == uid,
@@ -878,9 +889,9 @@ def demo_gift():
     user = me()
     if GiftItem.query.filter_by(owner_id=user.id, status="held").count() >= 12:
         return err("Инвентарь полон", 400)
-    name, emoji = secrets.choice(DEMO_GIFTS)
-    gift = GiftItem(owner_id=user.id, name=f"{name} #{secrets.randbelow(9000) + 100}", emoji=emoji,
-                    art=secrets.choice(ARTS))
+    name, emoji, slug = secrets.choice(DEMO_GIFTS)
+    gift = GiftItem(owner_id=user.id, name=f"{name} #{slug.rsplit('-', 1)[1]}", emoji=emoji,
+                    art=secrets.choice(ARTS), slug=slug)
     db.session.add(gift)
     db.session.commit()
     return jsonify({"gift": gift.to_dict()})
@@ -960,7 +971,7 @@ def relay_deposit():
     except (TypeError, ValueError):
         fee = 0
     gift = GiftItem(owner_id=user.id, name=name, emoji=emoji, tg_gift_id=tg_gift_id,
-                    art=ARTS[user.id % len(ARTS)], transfer_fee=fee)
+                    art=ARTS[user.id % len(ARTS)], transfer_fee=fee, slug=clean_slug(data.get("slug")))
     db.session.add(gift)
     db.session.commit()
     return jsonify({"status": "credited", "gift": gift.to_dict()})

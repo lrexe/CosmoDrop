@@ -198,6 +198,7 @@ class Relay:
             try:
                 res = self.api("/api/relay/gift-deposit", {
                     "telegram_id": sender["id"], "name": name, "emoji": emoji, "tg_gift_id": gid,
+                    "slug": str((g.get("gift") or {}).get("name") or "").lower(),
                     "transfer_star_count": g.get("transfer_star_count") or 0})
             except ApiError as e:
                 log.error("Сервер не принял подарок %s: %s", gid, e)

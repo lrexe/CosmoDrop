@@ -128,6 +128,8 @@ res = relay.sync()
 a_inv = inv(A)
 check("NFT-подарок зачислен отправителю", res[0] == 1 and len(a_inv) == 1 and a_inv[0]["name"] == "Plush Pepe #1337", a_inv)
 check("запомнена плата Telegram за передачу", a_inv[0]["transfer_fee"] == 25)
+check("настоящая картинка подарка: image", a_inv[0]["image"] == "/gift-art/plushpepe-1337.jpg", a_inv[0].get("image"))
+check("настоящая анимация подарка: anim", a_inv[0]["anim"] == "/gift-art/plushpepe-1337.json", a_inv[0].get("anim"))
 check("игрок получил уведомление", any(m[0] == ALICE and "принят" in m[1] for m in fake.messages))
 with app.app_context():
     n = GiftItem.query.filter(GiftItem.tg_gift_id.in_(["old", "anon", "self", "plain"])).count()
@@ -139,6 +141,20 @@ relay2 = Relay("777:RELAY-TEST", "relay-s", backend="http://127.0.0.1:5077",
                state_path=state_file, api_base="http://127.0.0.1:5078")
 check("состояние переживает перезапуск", relay2.state["connection_id"] == "conn-1" and "g-pepe" in relay2.state["seen"])
 
+junk = unique("g-junk", ALICE, "Toy Bear", 5)
+junk["gift"]["name"] = "../x"
+nameless = unique("g-nameless", ALICE, "Lol Pop", 6)
+del nameless["gift"]["name"]
+fake.gifts["g-junk"], fake.gifts["g-nameless"] = junk, nameless
+res = relay.sync()
+by_name = {g["name"]: g for g in inv(A)}
+check("подарок с мусорным gift.name зачислен без картинки",
+      res[0] == 2 and by_name["Toy Bear #5"]["image"] is None and by_name["Toy Bear #5"]["anim"] is None, by_name.get("Toy Bear #5"))
+check("подарок без gift.name зачислен без картинки", by_name["Lol Pop #6"]["image"] is None)
+with app.app_context():
+    check("в БД мусорный slug не сохранён",
+          all(g.slug is None for g in GiftItem.query.filter(GiftItem.tg_gift_id.in_(["g-junk", "g-nameless"]))))
+
 # ---------- 3. розыгрыш и выдача победителю
 with app.app_context():
     for tid in (ALICE, BOB):
@@ -146,6 +162,8 @@ with app.app_context():
     db.session.commit()
 gift_id = a_inv[0]["id"]
 pool = c.post("/api/pools", headers=A, json={"mode": "wheel", "gift_id": gift_id, "min_stake": 5, "duration_min": 15}).get_json()
+check("раунд отдаёт image/anim подарка", pool.get("image") == "/gift-art/plushpepe-1337.jpg"
+      and pool.get("anim") == "/gift-art/plushpepe-1337.json", (pool.get("image"), pool.get("anim")))
 c.post(f"/api/pools/{pool['id']}/stake", headers=B, json={"amount": 100})
 with app.app_context():
     db.session.get(Pool, pool["id"]).ends_at = datetime.utcnow() - timedelta(seconds=1)

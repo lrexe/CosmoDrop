@@ -9,8 +9,8 @@ from models import db, User, GiftItem, Pool, PoolEntry, LedgerTx, PayoutRequest
 from bot.vloody import settle
 
 
-def _pool(organizer, name, emoji, art, mode, min_stake, minutes=None, vault_max=None, secret=None):
-    gift = GiftItem(owner_id=organizer.id, name=name, emoji=emoji, art=art, status="locked")
+def _pool(organizer, name, emoji, slug, art, mode, min_stake, minutes=None, vault_max=None, secret=None):
+    gift = GiftItem(owner_id=organizer.id, name=name, emoji=emoji, art=art, slug=slug, status="locked")
     db.session.add(gift)
     db.session.flush()
     seed = secrets.token_hex(32)
@@ -47,29 +47,30 @@ def seed_vloody(demo_telegram_id):
         return 0
     p = players
 
-    wheel = _pool(p[0], "Plush Pepe #1337", "🐸", "a1", "wheel", 5, minutes=84)
+    wheel = _pool(p[0], "Plush Pepe #1337", "🐸", "plushpepe-1337", "a1", "wheel", 5, minutes=84)
     _entry(wheel, p[1], 90, mins_ago=30)
     _entry(wheel, p[2], 40, mins_ago=12)
 
-    vault = _pool(p[1], "Evil Eye #88", "👁", "a2", "vault", 10, vault_max=125, secret=77)
+    vault = _pool(p[1], "Evil Eye #88", "👁", "evileye-88", "a2", "vault", 10, vault_max=125, secret=77)
     for user, number in ((p[0], 7), (p[2], 13), (p[3], 100), (p[4], 42)):
         _entry(vault, user, 10, number=number)
 
-    cigar = _pool(p[2], "Vintage Cigar #7", "🚬", "a3", "wheel", 25, minutes=22 * 60)
+    cigar = _pool(p[2], "Vintage Cigar #7", "🚬", "vintagecigar-7", "a3", "wheel", 25, minutes=22 * 60)
     _entry(cigar, p[3], 75)
 
-    auction = _pool(p[3], "Jelly Rabbit #42", "🎭", "a4", "auction", 20, minutes=190)
+    auction = _pool(p[3], "Jelly Bunny #42", "🎭", "jellybunny-42", "a4", "auction", 20, minutes=190)
     _entry(auction, p[0], 60)
     _entry(auction, p[4], 45)
 
-    done = _pool(p[4], "Durov's Cap #9", "🎩", "a1", "wheel", 10, minutes=0)
+    done = _pool(p[4], "Durov's Cap #9", "🎩", "durovscap-9", "a1", "wheel", 10, minutes=0)
     _entry(done, p[0], 120, mins_ago=90)
     _entry(done, p[1], 200, mins_ago=80)
     _entry(done, p[2], 60, mins_ago=70)
     db.session.flush()
     settle(done)
 
-    for name, emoji, art in (("Astral Shard #404", "💎", "a2"), ("Spring Basket #21", "🥚", "a4")):
-        db.session.add(GiftItem(owner_id=demo.id, name=name, emoji=emoji, art=art))
+    for name, emoji, slug, art in (("Astral Shard #404", "💎", "astralshard-404", "a2"),
+                                   ("Spring Basket #21", "🥚", "springbasket-21", "a4")):
+        db.session.add(GiftItem(owner_id=demo.id, name=name, emoji=emoji, art=art, slug=slug))
     db.session.commit()
     return Pool.query.count()
