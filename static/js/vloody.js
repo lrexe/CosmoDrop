@@ -104,8 +104,64 @@
     if (name === "create") loadCreate();
     if (name === "profile") loadProfile(true);
   }
-  function openOv(id) { $(id).classList.add("on"); }
-  function closeOv(id) { $(id).classList.remove("on"); }
+  // ------------------------------------------------------------------ модальные окна
+  // Разметка одна на обе раскладки (шторка ≤860px, диалог ≥861px) — переключает только CSS (vl-overlays.css),
+  // поэтому введённые значения переживают смену ширины. Здесь: фокус внутрь, ловушка Tab, Esc, блок прокрутки
+  // фона (#app inert + .vl-ov-lock на <html>), возврат фокуса к кнопке, которой окно открыли.
+  const OV_FOCUSABLE = "button:not([disabled]), input:not([disabled]), select:not([disabled]), "
+    + "textarea:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])";
+  const ovStack = [];      // открытые окна, верхнее — последнее
+  let ovTrigger = null;    // [data-act], по которому кликнули (Safari не фокусирует кнопки по клику)
+  let ovDownEl = null;     // где начался жест: закрываем по фону, только если и нажали, и отпустили на фоне
+  const ovDialog = (id) => $(id).querySelector(".vl-dialog");
+  const ovFocusables = (dlg) => Array.from(dlg.querySelectorAll(OV_FOCUSABLE)).filter((el) => el.getClientRects().length);
+  function rangeFill(r) {
+    const min = parseFloat(r.min) || 0, max = parseFloat(r.max) || 100, v = parseFloat(r.value) || 0;
+    r.style.setProperty("--vl-fill", (max > min ? Math.min(100, Math.max(0, (v - min) / (max - min) * 100)) : 0) + "%");
+  }
+  function ovKey(e) {
+    const id = ovStack[ovStack.length - 1]; if (!id) return;
+    if (e.key === "Escape") { e.preventDefault(); closeOv(id); return; }
+    if (e.key !== "Tab") return;
+    const dlg = ovDialog(id), f = ovFocusables(dlg), a = document.activeElement;
+    if (!f.length) { e.preventDefault(); dlg.focus(); return; }
+    const first = f[0], last = f[f.length - 1], inside = dlg.contains(a);
+    if (e.shiftKey && (a === first || a === dlg || !inside)) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && (a === last || !inside)) { e.preventDefault(); first.focus(); }
+  }
+  function openOv(id) {
+    const ov = $(id); if (!ov || ovStack.includes(id)) return;
+    const from = ovTrigger || document.activeElement;
+    ov._opener = from && from !== document.body && !ov.contains(from) ? from : null;
+    ov._openerAct = ov._opener && ov._opener.dataset ? ov._opener.dataset.act || "" : "";
+    if (!ovStack.length) {
+      document.documentElement.classList.add("vl-ov-lock");
+      $("app").inert = true;
+      document.addEventListener("keydown", ovKey);
+    }
+    ovStack.push(id);
+    ov.querySelectorAll(".vl-range").forEach(rangeFill);
+    const dlg = ovDialog(id);
+    ov.classList.add("on");
+    dlg.querySelector(".vl-dlg-body").scrollTop = 0;
+    dlg.focus({ preventScroll: true });
+  }
+  function closeOv(id) {
+    const ov = $(id); if (!ov) return;
+    if (id === "topup-modal") tonReset();
+    ov.classList.remove("on");
+    const i = ovStack.indexOf(id); if (i < 0) return;
+    ovStack.splice(i, 1);
+    let back = ov._opener;
+    // кнопку могли перерисовать, пока окно было открыто, — ищем такую же
+    if (back && !back.isConnected && ov._openerAct) back = document.querySelector(`[data-act="${CSS.escape(ov._openerAct)}"]`);
+    ov._opener = null;
+    if (ovStack.length) { ovDialog(ovStack[ovStack.length - 1]).focus({ preventScroll: true }); return; }
+    document.removeEventListener("keydown", ovKey);
+    $("app").inert = false;
+    document.documentElement.classList.remove("vl-ov-lock");
+    if (back && back.isConnected && back.getClientRects().length) back.focus({ preventScroll: true });
+  }
 
   // ================================================================== ГЛАВНАЯ
   async function loadPools() {
@@ -1138,11 +1194,11 @@
   function topupOpen() {
     const R = state.profile.rates;
     $("tu-note").textContent = VL.demo ? "Демо-режим: VLD зачисляются сразу и ничего не стоят" : "Оплата через Telegram Stars";
-    $("tu-rate").textContent = `Курс: 100 ⭐ → ${Math.floor(100 * R.stars_to_vld)} VLD · включает комиссию платформы`;
+    $("tu-rate").textContent = `Курс: 100 Stars → ${Math.floor(100 * R.stars_to_vld)} VLD · включает комиссию платформы`;
     $("tu-amount").value = "";
-    document.querySelectorAll("#tu-presets .exc-card").forEach((c) => {
-      c.classList.remove("sel");
-      c.querySelector(".exc-card-vld").textContent = Math.floor(+c.dataset.v * R.stars_to_vld) + " VLD";
+    document.querySelectorAll("#tu-presets .vl-dlg-preset").forEach((c) => {
+      c.classList.remove("is-on"); c.setAttribute("aria-pressed", "false");
+      c.querySelector(".vl-dlg-preset-vld").textContent = Math.floor(+c.dataset.v * R.stars_to_vld) + " VLD";
     });
     $("tt-note").textContent = `Минимум ${R.ton_min} TON · 1 TON = ${R.vld_per_ton} VLD`;
     $("tt-slider").min = R.ton_min; $("tt-slider").value = Math.max(1, R.ton_min); $("tt-amount").value = "";
@@ -1152,7 +1208,9 @@
   }
   function topupMode(m) {
     tuMode = m;
-    document.querySelectorAll("#tu-tabs .m-tab").forEach((b) => b.classList.toggle("on", b.dataset.tum === m));
+    document.querySelectorAll("#tu-tabs .vl-seg-btn").forEach((b) => {
+      b.classList.toggle("on", b.dataset.tum === m); b.setAttribute("aria-pressed", String(b.dataset.tum === m));
+    });
     $("tu-stars").classList.toggle("hid", m !== "stars");
     $("tu-ton").classList.toggle("hid", m !== "ton");
     if (m === "ton" && !state.profile.rates.ton_enabled) toast("Пополнение в TON пока не настроено");
@@ -1245,7 +1303,7 @@
   let lookupTimer = 0, recipientOk = false;
   function transferOpen() {
     $("tr-recipient").value = ""; $("tr-amount").value = ""; recipientOk = false;
-    $("tr-recip-status").innerHTML = "&nbsp;"; $("tr-recip-status").className = "recip-status";
+    $("tr-recip-status").innerHTML = "&nbsp;"; $("tr-recip-status").className = "vl-dlg-recip";
     const L = state.profile.limits;
     $("tr-fee-label").textContent = `Комиссия перевода (${L.transfer_fee * 100}%)`;
     transferCalc(); openOv("transfer-modal");
@@ -1265,7 +1323,7 @@
   function transferLookup() {
     clearTimeout(lookupTimer); recipientOk = false; transferCalc();
     const st = $("tr-recip-status"), id = $("tr-recipient").value.trim();
-    st.className = "recip-status";
+    st.className = "vl-dlg-recip";
     if (!/^\d{3,}$/.test(id)) { st.innerHTML = "&nbsp;"; return; }
     st.textContent = "Ищем…";
     lookupTimer = setTimeout(async () => {
@@ -1297,7 +1355,9 @@
   function payoutMode(m) {
     poMethod = m;
     const L = state.profile.limits, ton = m === "TON";
-    document.querySelectorAll("#po-tabs .m-tab").forEach((b) => b.classList.toggle("on", b.dataset.pom === m));
+    document.querySelectorAll("#po-tabs .vl-seg-btn").forEach((b) => {
+      b.classList.toggle("on", b.dataset.pom === m); b.setAttribute("aria-pressed", String(b.dataset.pom === m));
+    });
     $("po-dest-label").textContent = ton ? "Адрес TON-кошелька (EQ… / UQ…)" : "Telegram @username для получения";
     $("po-destination").placeholder = ton ? "UQAbc123…" : "@username";
     $("po-destination").value = ton ? (tonAddr || "") : (state.profile.username ? "@" + state.profile.username : "");
@@ -1383,14 +1443,18 @@
 
   document.addEventListener("click", (e) => {
     const rp = e.target.closest(".rp"); if (rp) ripple(e, rp);
-    if (e.target.classList.contains("overlay")) {
-      e.target.classList.remove("on");
-      if (e.target.id === "topup-modal") tonReset();
+    if (e.target.classList.contains("vl-overlay")) {
+      if (ovDownEl === e.target) closeOv(e.target.id); // closeOv сбрасывает и TON-ожидание у пополнения
       return;
     }
     const t = (sel) => e.target.closest(sel);
     let el;
-    if ((el = t("[data-act]"))) { const fn = ACTIONS[el.dataset.act]; if (fn) fn(); return; }
+    if ((el = t("[data-ov-close]"))) return closeOv(el.closest(".vl-overlay").id);
+    if ((el = t("[data-act]"))) {
+      const fn = ACTIONS[el.dataset.act];
+      if (fn) { ovTrigger = el; try { fn(); } finally { ovTrigger = null; } }
+      return;
+    }
     if ((el = t("[data-tab]"))) return tab(el.dataset.tab);
     // share first: on the home cards the share button sits inside the clickable card ([data-pool])
     if ((el = t("[data-share]"))) return sharePool(+el.dataset.share);
@@ -1431,11 +1495,15 @@
     if ((el = t("[data-tum]"))) return topupMode(el.dataset.tum);
     if ((el = t("[data-pom]"))) return payoutMode(el.dataset.pom);
     if ((el = t("[data-copy]"))) return copyText($(el.dataset.copy).textContent, "Скопировано!");
-    if ((el = t("#tu-presets .exc-card"))) {
-      document.querySelectorAll("#tu-presets .exc-card").forEach((c) => c.classList.toggle("sel", c === el));
+    if ((el = t("#tu-presets .vl-dlg-preset"))) {
+      document.querySelectorAll("#tu-presets .vl-dlg-preset").forEach((c) => {
+        c.classList.toggle("is-on", c === el); c.setAttribute("aria-pressed", String(c === el));
+      });
       $("tu-amount").value = el.dataset.v; starsCalc();
     }
   });
+  document.addEventListener("pointerdown", (e) => { ovDownEl = e.target; });
+  document.addEventListener("input", (e) => { if (e.target.classList && e.target.classList.contains("vl-range")) rangeFill(e.target); });
 
   $("sm-slider").addEventListener("input", (e) => { $("sm-input").value = ""; stakeSync(+e.target.value); });
   $("sm-input").addEventListener("input", (e) => stakeSync(parseInt(e.target.value, 10) || 0));
@@ -1447,7 +1515,10 @@
   $("po-amount").addEventListener("input", payoutCalc);
   $("po-destination").addEventListener("input", payoutCalc);
   $("tu-amount").addEventListener("input", () => {
-    document.querySelectorAll("#tu-presets .exc-card").forEach((c) => c.classList.remove("sel")); starsCalc();
+    document.querySelectorAll("#tu-presets .vl-dlg-preset").forEach((c) => {
+      c.classList.remove("is-on"); c.setAttribute("aria-pressed", "false");
+    });
+    starsCalc();
   });
   $("tt-slider").addEventListener("input", () => { $("tt-amount").value = ""; tonCalc(); });
   $("tt-amount").addEventListener("input", tonCalc);

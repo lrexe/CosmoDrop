@@ -1,0 +1,487 @@
+/* Vloody modal windows: stake, top-up (Stars / TON + TON waiting state), transfer, payout, fairness.
+   Needs vl-tokens.css + vl-base.css (+ .vl-seg / .vl-seg-btn from vl-rounds.css); loaded AFTER the legacy files.
+
+   Markup (templates/vloody.html):
+     .vl-overlay#<id>-modal          — fixed scrim; JS (openOv / closeOv) toggles .on
+       .vl-dialog[role=dialog]       — the window (.is-wide: top-up, 560px on desktop)
+         .vl-dlg-handle              — sheet grip, phone only
+         .vl-dlg-head > .vl-dlg-title + .vl-dlg-close[data-ov-close]
+         .vl-dlg-body                — the scroller; vertical rhythm by flex gap
+   Parts: .vl-dlg-stats (two small facts), .vl-dlg-amount (big amount + unit), .vl-range (slider; JS keeps --vl-fill),
+   .vl-dlg-hint, .vl-dlg-field + .vl-dlg-label, .vl-dlg-seg (segmented control: icon + word), .vl-dlg-presets /
+   .vl-dlg-preset (.is-on), .vl-dlg-equiv (pay = get), .vl-dlg-sum (definition list, .is-total / .is-neg),
+   .vl-dlg-alert (.on shows it; .is-info = accent tone), .vl-dlg-recip (.ok / .err), .vl-dlg-copies / .vl-dlg-copy,
+   .vl-dlg-status + .vl-dlg-progress, .vl-dlg-actions, .vl-dlg-cta, .vl-dlg-note, .vl-dlg-article + .vl-dlg-code.
+
+   Layout is CSS only, one DOM for both: phone ≤ 860px — bottom sheet; desktop ≥ 861px — centred dialog.
+   Open/close motion ≤ 220ms (sheet slides up, dialog fades in from .98); none under prefers-reduced-motion.
+   While a window is open JS sets .vl-ov-lock on <html> (the scrollers stop) and makes #app inert. */
+
+:root,
+:root[data-theme="dark"] {
+  --vl-scrim: rgba(2, 5, 12, .68);
+  --vl-danger-soft: rgba(255, 107, 122, .12);
+  --vl-danger-line: rgba(255, 107, 122, .32);
+}
+:root[data-theme="light"] {
+  --vl-scrim: rgba(11, 27, 51, .42);
+  --vl-danger-soft: rgba(204, 47, 53, .07);
+  --vl-danger-line: rgba(204, 47, 53, .28);
+}
+
+/* ── scroll lock behind an open window ── */
+.vl-ov-lock #screens,
+.vl-ov-lock #sidebar { overflow: hidden; }
+
+/* ── scrim ── */
+.vl-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 700;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: var(--vl-scrim);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 200ms var(--ease), visibility 0s linear 200ms;
+}
+.vl-overlay.on {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 200ms var(--ease), visibility 0s;
+}
+
+/* ── window: bottom sheet (phone, base) ── */
+.vl-dialog {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  max-height: 90dvh;
+  border: 1px solid var(--vl-line);
+  border-bottom: 0;
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-2);
+  font-family: var(--font);
+  font-size: var(--fs-md);
+  line-height: 1.45;
+  transform: translateY(40px);
+  transition: transform 220ms var(--ease);
+}
+.vl-dialog:focus { outline: none; }
+.vl-overlay.on .vl-dialog { transform: none; }
+
+.vl-dlg-handle {
+  flex: none;
+  display: block;
+  width: 36px;
+  height: 4px;
+  margin: 8px auto 0;
+  border-radius: var(--r-pill);
+  background: var(--line-strong);
+}
+
+.vl-dlg-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 4px 12px 4px 20px;
+}
+.vl-dlg-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font: 700 var(--fs-lg)/1.25 var(--font);
+  letter-spacing: -.01em;
+  color: var(--text);
+}
+.vl-dlg-title .ic { color: var(--accent-text); }
+.vl-dlg-close { border-color: transparent; color: var(--muted); }
+
+.vl-dlg-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 6px 20px calc(20px + env(safe-area-inset-bottom, 0px));
+}
+.vl-dlg-body,
+.vl-dlg-body #tu-stars,
+.vl-dlg-body #tu-ton,
+.vl-dlg-body #tt-form,
+.vl-dlg-body #tt-wait {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── small facts (stake: participants · chance) ── */
+.vl-dlg-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0;
+}
+.vl-dlg-stats > div {
+  padding: 10px 12px;
+  border: 1px solid var(--vl-line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.vl-dlg-stats dt { font-size: var(--fs-xs); color: var(--muted); }
+.vl-dlg-stats dd { margin: 2px 0 0; font-size: var(--fs-lg); font-weight: 600; color: var(--text); }
+.vl-dlg-accent { color: var(--accent-text) !important; }
+
+/* ── the amount being paid ── */
+.vl-dlg-amount {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding-top: 4px;
+}
+.vl-dlg-amount .ic { width: 24px; height: 24px; color: var(--accent-text); }
+.vl-dlg-amount .num { font-size: 40px; font-weight: 600; line-height: 1.1; color: var(--text); }
+.vl-dlg-unit { font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
+.vl-dlg-amount .vl-dlg-unit { font-size: var(--fs-lg); }
+
+/* ── range slider ── */
+.vl-range {
+  --vl-fill: 50%;
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+.vl-range:focus { outline: none; }
+.vl-range::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: linear-gradient(to right, var(--accent) 0 var(--vl-fill), var(--surface-2) var(--vl-fill) 100%);
+  box-shadow: inset 0 0 0 1px var(--vl-line);
+}
+.vl-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  margin-top: -8px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .3);
+  transition: box-shadow var(--dur) var(--ease);
+}
+.vl-range::-moz-range-track { height: 6px; border-radius: var(--r-pill); background: var(--surface-2); }
+.vl-range::-moz-range-progress { height: 6px; border-radius: var(--r-pill); background: var(--accent); }
+.vl-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .3);
+}
+.vl-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 2px 6px rgba(0, 0, 0, .3), var(--focus); }
+.vl-range:focus-visible::-moz-range-thumb { box-shadow: 0 2px 6px rgba(0, 0, 0, .3), var(--focus); }
+
+.vl-dlg-hint {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: -8px;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+.vl-dlg-hint b { font-weight: 600; color: var(--text); }
+
+/* ── fields ── */
+.vl-dlg-field { display: grid; gap: 6px; }
+.vl-dlg-label { font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
+.vl-dialog input[type="number"] { -moz-appearance: textfield; }
+.vl-dialog input[type="number"]::-webkit-inner-spin-button,
+.vl-dialog input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+.vl-dlg-recip { min-height: 18px; margin-top: -2px; font-size: var(--fs-sm); color: var(--muted); }
+.vl-dlg-recip.ok { color: var(--success); font-weight: 600; }
+.vl-dlg-recip.err { color: var(--danger); }
+
+/* ── segmented control (Stars / TON, TON / Stars) ── */
+.vl-dlg-seg {
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--surface-2);
+}
+.vl-dlg-seg .vl-seg-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 10px;
+  font-size: var(--fs-md);
+  white-space: nowrap;
+}
+.vl-dlg-seg .vl-seg-btn .ic { width: 18px; height: 18px; }
+.vl-dlg-seg .vl-seg-btn.on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--line-strong), 0 1px 3px rgba(0, 0, 0, .18);
+}
+.vl-dlg-seg .vl-seg-btn.on .ic { color: var(--accent-text); }
+.vl-dlg-seg .vl-seg-btn.on:focus-visible { box-shadow: inset 0 0 0 1px var(--line-strong), var(--focus); }
+
+/* ── Stars presets ── */
+.vl-dlg-presets {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.vl-dlg-preset {
+  -webkit-appearance: none;
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+  padding: 12px 6px 10px;
+  border: 1px solid var(--vl-line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.vl-dlg-preset-n { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-lg); font-weight: 600; }
+.vl-dlg-preset-n .ic { width: 16px; height: 16px; color: var(--accent-text); }
+.vl-dlg-preset-vld { font-size: var(--fs-xs); color: var(--muted); }
+.vl-dlg-preset.is-on {
+  border-color: var(--accent-text);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent-text);
+}
+.vl-dlg-preset.is-on .vl-dlg-preset-vld { color: var(--text); }
+.vl-dlg-preset:focus-visible { outline: none; box-shadow: var(--focus); }
+.vl-dlg-preset.is-on:focus-visible { box-shadow: inset 0 0 0 1px var(--accent-text), var(--focus); }
+
+/* ── you pay = you get ── */
+.vl-dlg-equiv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--vl-line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.vl-dlg-equiv-side { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
+.vl-dlg-equiv-side .ic { align-self: center; width: 18px; height: 18px; color: var(--accent-text); }
+.vl-dlg-equiv-side .num { font-size: var(--fs-xl); font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.vl-dlg-equiv-side.is-get .num { color: var(--accent-text); }
+.vl-dlg-equiv-eq { font: 600 var(--fs-lg)/1 var(--vl-mono); color: var(--muted); }
+
+/* ── summary (definition list) ── */
+.vl-dlg-sum {
+  margin: 0;
+  padding: 2px 14px;
+  border: 1px solid var(--vl-line);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.vl-dlg-sum-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+}
+.vl-dlg-sum-row + .vl-dlg-sum-row { border-top: 1px solid var(--vl-line); }
+.vl-dlg-sum dt { font-size: var(--fs-sm); color: var(--muted); }
+.vl-dlg-sum dd {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.vl-dlg-sum dd.is-neg { color: var(--muted); font-weight: 500; }
+.vl-dlg-sum-row.is-total { padding: 12px 0; }
+.vl-dlg-sum-row.is-total + .vl-dlg-sum-row,
+.vl-dlg-sum-row + .vl-dlg-sum-row.is-total { border-top-color: var(--line-strong); }
+.vl-dlg-sum-row.is-total dt { font-weight: 600; color: var(--text); }
+.vl-dlg-sum-row.is-total dd { font-size: var(--fs-lg); font-weight: 700; }
+
+/* ── inline alert (validation / important note); icon drawn like the sprite (stroke 1.8) ── */
+.vl-dlg-alert {
+  display: none;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--vl-danger-line);
+  border-radius: var(--r-sm);
+  background: var(--vl-danger-soft);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+.vl-dlg-alert.on { display: flex; }
+.vl-dlg-alert::before {
+  content: "";
+  flex: none;
+  width: 18px;
+  height: 18px;
+  background: var(--danger);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7.5v5.5M12 16.5h.01'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7.5v5.5M12 16.5h.01'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.vl-dlg-alert.is-info { border-color: var(--line-strong); background: var(--accent-soft); }
+.vl-dlg-alert.is-info::before { background: var(--accent-text); }
+
+/* ── TON waiting state ── */
+.vl-dlg-copies { display: grid; gap: 8px; }
+.vl-dlg-copy {
+  -webkit-appearance: none;
+  appearance: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "l ic" "v ic";
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 2px;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px 10px 14px;
+  border: 1px solid var(--vl-line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease);
+}
+.vl-dlg-copy-l { grid-area: l; font-size: var(--fs-xs); color: var(--muted); }
+.vl-dlg-copy-v { grid-area: v; font-size: var(--fs-sm); color: var(--text); overflow-wrap: anywhere; word-break: break-all; }
+.vl-dlg-copy .ic { grid-area: ic; width: 18px; height: 18px; color: var(--accent-text); }
+.vl-dlg-copy:focus-visible { outline: none; box-shadow: var(--focus); }
+.vl-dlg-copy:active { border-color: var(--accent-text); }
+
+.vl-dlg-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+.vl-dlg-progress {
+  flex: none;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent-text);
+  border-radius: 50%;
+  animation: vl-dlg-spin .9s linear infinite;
+}
+@keyframes vl-dlg-spin { to { transform: rotate(360deg); } }
+
+.vl-dlg-actions { display: grid; gap: 8px; }
+
+/* ── primary action and notes ── */
+.vl-dlg-cta { min-height: 50px; margin-top: 2px; }
+.vl-dialog .vl-btn-primary[disabled] {
+  opacity: 1;
+  border-color: var(--vl-line);
+  background: var(--surface-2);
+  color: var(--muted);
+  box-shadow: none;
+  filter: none;
+}
+.vl-dlg-note { margin: 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--muted); }
+.vl-dlg-note:empty { display: none; }
+
+/* ── fairness: a short article ── */
+.vl-dlg-article { display: grid; gap: 0; }
+.vl-dlg-article section { padding: 14px 0; }
+.vl-dlg-article section + section { border-top: 1px solid var(--vl-line); }
+.vl-dlg-article section:first-child { padding-top: 4px; }
+.vl-dlg-article h3 { margin: 0 0 4px; font: 600 var(--fs-md)/1.35 var(--font); color: var(--text); }
+.vl-dlg-article p { margin: 0; font-size: var(--fs-sm); line-height: 1.6; color: var(--muted); }
+.vl-dlg-code {
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 2px 0;
+  vertical-align: baseline;
+  padding: 1px 6px;
+  border: 1px solid var(--vl-line);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: 500 12px/1.7 var(--vl-mono);
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .vl-dlg-close:hover { background: var(--surface-2); color: var(--text); }
+  .vl-dlg-preset:not(.is-on):hover,
+  .vl-dlg-copy:hover { border-color: var(--line-strong); }
+  .vl-dlg-seg .vl-seg-btn:not(.on):hover { color: var(--text); }
+}
+
+/* ── desktop ≥ 861px: centred dialog ── */
+@media (min-width: 861px) {
+  .vl-overlay { align-items: center; padding: 24px; }
+  .vl-dialog {
+    max-width: 480px;
+    max-height: min(86vh, 760px);
+    border-bottom: 1px solid var(--vl-line);
+    border-radius: var(--r-lg);
+    transform: scale(.98);
+    transition: transform 200ms var(--ease);
+  }
+  .vl-dialog.is-wide { max-width: 560px; }
+  .vl-dlg-handle { display: none; }
+  .vl-dlg-head { min-height: 60px; padding: 10px 14px 4px 24px; }
+  .vl-dlg-body { padding: 6px 24px 24px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vl-overlay,
+  .vl-overlay.on,
+  .vl-dialog,
+  .vl-dlg-preset,
+  .vl-dlg-copy,
+  .vl-range::-webkit-slider-thumb { transition: none; }
+  .vl-dialog { transform: none; }
+  .vl-dlg-progress { animation: none; }
+}
