@@ -1,0 +1,251 @@
+/* Vloody base components. Needs vl-tokens.css.
+   Coexists with the legacy vloody.css / vloody-app.css: no bare element or * selectors here,
+   every rule targets a new class. Names taken by the legacy files carry the vl- prefix:
+   .vl-btn (+ .vl-btn-primary / .vl-btn-ghost / .vl-btn-sm), .vl-chip. */
+
+/* ── page surface: put on <body> (or a wrapper) of new screens ── */
+.vl-page {
+  min-height: 100vh;
+  margin: 0;
+  background: var(--bg-glow) no-repeat, var(--bg);
+  background-attachment: fixed;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs-md);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ── icons: <svg class="ic"><use href="#i-name"/></svg> ── */
+.ic {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  display: inline-block;
+  vertical-align: middle;
+  color: inherit;
+  overflow: visible;
+}
+.ic-sm { width: 16px; height: 16px; }
+.ic-lg { width: 24px; height: 24px; }
+
+/* ── numbers, balances, timers, hashes ── */
+.num {
+  font-family: var(--vl-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -.01em;
+}
+
+/* ── buttons ── */
+.vl-btn {
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-sizing: border-box;
+  min-height: 46px;
+  padding: 0 18px;
+  margin: 0;
+  border: 1px solid var(--vl-line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font: 600 var(--fs-md)/1.2 var(--font);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease),
+              background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), opacity var(--dur);
+}
+.vl-btn:active { transform: translateY(1px) scale(.985); }
+.vl-btn:focus-visible { outline: none; box-shadow: var(--focus); }
+.vl-btn[disabled],
+.vl-btn[aria-disabled="true"] { opacity: .45; cursor: not-allowed; transform: none; }
+
+.vl-btn-primary {
+  border-color: transparent;
+  background: var(--accent-grad);
+  color: var(--on-accent);
+  box-shadow: var(--shadow-cta);
+}
+.vl-btn-primary:focus-visible { box-shadow: var(--shadow-cta), var(--focus); }
+
+.vl-btn-ghost {
+  background: transparent;
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+.vl-btn-sm {
+  min-height: 34px;
+  padding: 0 12px;
+  gap: 6px;
+  font-size: var(--fs-sm);
+  border-radius: var(--r-sm);
+}
+.vl-btn-sm .ic { width: 16px; height: 16px; }
+
+.vl-btn-block { display: flex; width: 100%; }
+
+/* square icon-only button (topbar actions, close, back) */
+.vl-btn-icon { min-height: 40px; width: 40px; padding: 0; }
+.vl-btn-icon.vl-btn-sm { min-height: 34px; width: 34px; }
+
+@media (hover: hover) and (pointer: fine) {
+  .vl-btn:hover { border-color: var(--line-strong); }
+  .vl-btn-primary:hover { filter: brightness(1.06); }
+  .vl-btn-ghost:hover { background: var(--accent-soft); }
+}
+
+/* ── text field ── */
+.input {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  margin: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--field);
+  color: var(--text);
+  font: 500 var(--fs-md)/1.3 var(--font);
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.input::placeholder { color: var(--muted); opacity: 1; }
+.input:focus { outline: none; border-color: var(--accent-text); box-shadow: var(--focus); }
+.input[aria-invalid="true"] { border-color: var(--danger); }
+.input.num { font-family: var(--vl-mono); }
+
+/* ── card ── */
+.card {
+  box-sizing: border-box;
+  position: relative;
+  padding: 16px;
+  border: 1px solid var(--vl-line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-1);
+}
+.card-raised { box-shadow: var(--shadow-2); }
+
+/* ── filter chip (toggle): aria-pressed="true" or .is-on marks the selected one ── */
+.vl-chip {
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  min-height: 34px;
+  padding: 0 14px;
+  margin: 0;
+  border: 1px solid var(--vl-line);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--muted);
+  font: 600 var(--fs-sm)/1 var(--font);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.vl-chip .ic { width: 16px; height: 16px; }
+.vl-chip:focus-visible { outline: none; box-shadow: var(--focus); }
+.vl-chip[aria-pressed="true"],
+.vl-chip.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+@media (hover: hover) and (pointer: fine) {
+  .vl-chip:not(.is-on):not([aria-pressed="true"]):hover { color: var(--text); border-color: var(--line-strong); }
+}
+
+/* ── pill: read-only capsule for a value (balance, count, address) ── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  min-height: 30px;
+  padding: 0 11px;
+  border: 1px solid var(--vl-line);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--text);
+  font: 600 var(--fs-sm)/1 var(--font);
+  white-space: nowrap;
+  max-width: 100%;
+}
+.pill .ic { width: 16px; height: 16px; color: var(--accent-text); }
+
+/* ── tag: small uppercase status label (no decorative badges — only real state) ── */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: 700 11px/1.2 var(--vl-mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.tag-accent { color: var(--accent-text); }
+.tag-live { color: var(--success); }
+.tag-warn { color: var(--warn); }
+.tag-danger { color: var(--danger); }
+.tag-live::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* ── loading placeholder ── */
+.skeleton {
+  display: block;
+  min-height: 1em;
+  border-radius: var(--r-sm);
+  background: var(--skeleton) linear-gradient(90deg, transparent 0, var(--skeleton-hi) 50%, transparent 100%) no-repeat;
+  background-size: 200% 100%;
+  background-position: 150% 0;
+  animation: vl-shimmer 1.3s linear infinite;
+  color: transparent;
+}
+@keyframes vl-shimmer { to { background-position: -50% 0; } }
+
+/* ── visually hidden, still read by screen readers ── */
+.sr-only {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── show an element in one theme only (e.g. sun / moon in the theme switch) ── */
+:root[data-theme="light"] .vl-when-dark,
+:root:not([data-theme="light"]) .vl-when-light { display: none; }
+
+/* temporary: theme switch inside the legacy top bar (Task 6 rebuilds the shell) */
+.vl-theme-btn { -webkit-appearance: none; appearance: none; color: inherit; font: inherit; line-height: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .vl-btn, .vl-chip, .input { transition: none; }
+  .vl-btn:active { transform: none; }
+  .skeleton { animation: none; }
+}

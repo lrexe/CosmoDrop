@@ -900,6 +900,7 @@
     "transfer-open": transferOpen, "transfer-confirm": transferConfirm,
     "payout-open": payoutOpen, "payout-confirm": payoutConfirm,
     "fair-info": () => openOv("fair-modal"),
+    "theme": () => { if (window.VLTheme) window.VLTheme.toggle(); },
     "ref-copy": () => copyText($("ref-link").textContent, "Скопировано!"),
     "ref-share": () => {
       const url = "https://t.me/share/url?url=" + encodeURIComponent($("ref-link").textContent)

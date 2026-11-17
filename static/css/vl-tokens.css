@@ -1,0 +1,87 @@
+/* Vloody design tokens.
+   Two themes on <html data-theme="dark|light">; plain :root (no attribute) falls back to dark.
+   Names that collide with the legacy stylesheets carry the vl- prefix: --vl-line, --vl-mono.
+   Every text pair is checked by tests/test_contrast.py (WCAG AA 4.5:1) — change a colour, run the test.
+
+   Accent: --accent is the LIGHT end and --accent-2 the DARK end of the button gradient
+   (use var(--accent-grad)); --on-accent is the text on it. --accent-text is the accent used
+   as text/icon colour on --bg / --surface (links, active tab, selected chip outline). */
+
+/* theme-independent */
+:root {
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 22px;
+  --r-pill: 999px;
+  --font: "Onest", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --vl-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --fs-xs: 12px;
+  --fs-sm: 13px;
+  --fs-md: 15px;
+  --fs-lg: 17px;
+  --fs-xl: 22px;
+  --fs-2xl: 28px;
+  --ease: cubic-bezier(.2, .7, .2, 1);
+  --dur: 180ms;
+}
+
+/* ── dark · «Глубина» (primary) ── */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #070b14;
+  --bg-glow: radial-gradient(120% 60% at 50% -12%, #10294f 0%, rgba(7, 11, 20, 0) 62%);
+  --surface: #0e1626;
+  --surface-2: #142744;
+  --vl-line: rgba(255, 255, 255, .08);
+  --line-strong: rgba(255, 255, 255, .14);
+  --text: #eaf2ff;
+  --muted: #7f93b3;
+  --accent: #1a72e3;
+  --accent-2: #1259c2;
+  --accent-grad: linear-gradient(180deg, var(--accent), var(--accent-2));
+  --accent-text: #56b0ff;
+  --accent-soft: rgba(86, 176, 255, .14);
+  --on-accent: #ffffff;
+  --success: #34d399;
+  --warn: #f5b544;
+  --danger: #ff6b7a;
+  --field: rgba(255, 255, 255, .04);
+  --skeleton: rgba(255, 255, 255, .06);
+  --skeleton-hi: rgba(255, 255, 255, .12);
+  --shadow-1: inset 0 1px 0 rgba(255, 255, 255, .04), 0 10px 24px -14px rgba(0, 0, 0, .8);
+  --shadow-2: 0 24px 50px -20px rgba(0, 0, 0, .8), 0 0 0 1px rgba(62, 160, 255, .08);
+  --shadow-gift: 0 18px 30px -10px rgba(0, 0, 0, .65), 0 0 30px rgba(62, 160, 255, .22);
+  --shadow-cta: 0 10px 24px -10px rgba(26, 114, 227, .8), inset 0 1px 0 rgba(255, 255, 255, .22);
+  --focus: 0 0 0 3px rgba(86, 176, 255, .45);
+}
+
+/* ── light · «Лёд» ── */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f5f8fc;
+  --bg-glow: linear-gradient(180deg, #e6f1ff 0%, rgba(245, 248, 252, 0) 34%);
+  --surface: #ffffff;
+  --surface-2: #f1f6fc;
+  --vl-line: rgba(11, 27, 51, .09);
+  --line-strong: rgba(11, 27, 51, .16);
+  --text: #0b1b33;
+  --muted: #5a6a82;
+  --accent: #1470e6;
+  --accent-2: #0558c4;
+  --accent-grad: linear-gradient(180deg, var(--accent), var(--accent-2));
+  --accent-text: #0f69da;
+  --accent-soft: rgba(20, 112, 230, .10);
+  --on-accent: #ffffff;
+  --success: #067a4a;
+  --warn: #a85a07;
+  --danger: #cc2f35;
+  --field: #ffffff;
+  --skeleton: rgba(11, 27, 51, .06);
+  --skeleton-hi: rgba(11, 27, 51, .11);
+  --shadow-1: 0 1px 2px rgba(11, 27, 51, .05), 0 8px 18px -10px rgba(10, 79, 184, .16);
+  --shadow-2: 0 2px 4px rgba(11, 27, 51, .04), 0 22px 44px -18px rgba(10, 79, 184, .26);
+  --shadow-gift: 0 16px 26px -10px rgba(11, 27, 51, .4);
+  --shadow-cta: 0 10px 22px -10px rgba(20, 112, 230, .65);
+  --focus: 0 0 0 3px rgba(20, 112, 230, .35);
+}
