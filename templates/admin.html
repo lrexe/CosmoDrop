@@ -5,98 +5,111 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow">
 <title>Vloody · Админ</title>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/vl-tokens.css') }}">
+<script src="{{ url_for('static', filename='js/vl-theme.js') }}"></script>
 <style>
-:root{
-  --void:#0A0A0C;--deep:#101012;--lift:#141417;--card:#18161A;--line:#ffffff14;
-  --v:#B8001F;--v2:#E8102F;--v3:#FF6B7A;--v4:#B8001F1f;--gold:#D4AF37;--em:#10b981;--rose:#f43f5e;
-  --t0:#F2EFEE;--t1:#F2EFEEcc;--t2:#F2EFEE80;
-  --syne:'Oswald',system-ui,sans-serif;--inter:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace;
-}
+/* Токены темы — static/css/vl-tokens.css (dark/light). Своих цветов здесь нет. */
 *{box-sizing:border-box;margin:0;padding:0;}
-body{background:var(--void);color:var(--t0);font-family:var(--inter);font-size:14px;min-height:100vh;}
+body{background:var(--bg-glow) no-repeat,var(--bg);background-attachment:fixed;color:var(--text);font-family:var(--font);font-size:14px;min-height:100vh;-webkit-font-smoothing:antialiased;}
 button,input,select{font-family:inherit;font-size:13px;}
 .hid{display:none!important;}
-.mono{font-family:var(--mono);font-size:12px;}
-.muted{color:var(--t2);}
-.pos{color:var(--em);} .neg{color:var(--rose);} .warn{color:var(--gold);}
+.mono{font-family:var(--vl-mono);font-size:12px;}
+.muted{color:var(--muted);}
+.pos{color:var(--success);} .neg{color:var(--danger);} .warn{color:var(--warn);}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:none;box-shadow:var(--focus);}
 
 /* вход */
-#login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
-.login-card{width:100%;max-width:360px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:28px;}
-.logo{font-family:var(--syne);font-size:26px;font-weight:700;letter-spacing:1px;text-transform:uppercase;}
-.logo em{font-style:normal;color:var(--v2);}
-.login-card p{color:var(--t2);font-size:13px;margin:6px 0 18px;line-height:1.5;}
-.inp{width:100%;background:var(--deep);border:1px solid var(--line);border-radius:10px;color:var(--t0);padding:11px 12px;outline:none;}
-.inp:focus{border-color:var(--v2);}
-.btn{background:var(--v);border:1px solid var(--v);color:#fff;font-weight:700;border-radius:10px;padding:10px 16px;cursor:pointer;}
-.btn:hover{background:var(--v2);}
-.btn.block{width:100%;margin-top:12px;}
-.btn.ghost{background:transparent;border-color:var(--line);color:var(--t1);}
-.btn.ghost:hover{border-color:var(--v2);color:var(--t0);background:transparent;}
-.btn.ok{background:#0b7a55;border-color:#0b7a55;} .btn.ok:hover{background:var(--em);}
-.btn.sm{padding:6px 10px;font-size:12px;border-radius:8px;}
+#login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;position:relative;}
+#login .themebtn{position:absolute;top:16px;right:16px;}
+.login-card{width:100%;max-width:360px;background:var(--surface);border:1px solid var(--vl-line);border-radius:var(--r-md);padding:28px;box-shadow:var(--shadow-2);}
+.logo{font-size:24px;font-weight:800;letter-spacing:.2px;}
+.logo em{font-style:normal;color:var(--accent-text);}
+.login-card p{color:var(--muted);font-size:13px;margin:6px 0 18px;line-height:1.5;}
+.inp{width:100%;background:var(--field);border:1px solid var(--line-strong);border-radius:var(--r-sm);color:var(--text);padding:11px 12px;outline:none;}
+.inp::placeholder{color:var(--muted);}
+.inp:focus{border-color:var(--accent-text);}
+.btn{display:inline-block;background:var(--accent-grad);border:1px solid var(--accent-2);color:var(--on-accent);font-weight:700;border-radius:var(--r-sm);padding:10px 16px;cursor:pointer;text-decoration:none;}
+.btn:hover{filter:brightness(1.08);}
+.btn.block{display:block;width:100%;margin-top:12px;}
+.btn.ghost{background:transparent;border-color:var(--line-strong);color:var(--text);}
+.btn.ghost:hover{border-color:var(--accent-text);color:var(--accent-text);filter:none;}
+.btn.ok{background:transparent;border-color:var(--success);color:var(--success);} .btn.ok:hover{background:var(--surface-2);filter:none;}
+.btn.sm{padding:6px 10px;font-size:12px;border-radius:var(--r-sm);}
 .btn:disabled{opacity:.4;cursor:not-allowed;}
-.err{color:var(--v3);font-size:12.5px;margin-top:10px;min-height:16px;}
+.err{color:var(--danger);font-size:12.5px;margin-top:10px;min-height:16px;}
+.themebtn{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;padding:0;background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--r-pill);color:var(--text);cursor:pointer;}
+.themebtn:hover{border-color:var(--accent-text);color:var(--accent-text);}
+.themebtn svg{width:18px;height:18px;}
+.themebtn .i-sun{display:none;}
+:root[data-theme="light"] .themebtn .i-sun{display:block;}
+:root[data-theme="light"] .themebtn .i-moon{display:none;}
 
 /* каркас */
-header{display:flex;align-items:center;gap:16px;padding:14px 24px;border-bottom:1px solid var(--line);background:var(--deep);position:sticky;top:0;z-index:5;flex-wrap:wrap;}
+header{display:flex;align-items:center;gap:16px;padding:14px 24px;border-bottom:1px solid var(--vl-line);background:var(--surface);position:sticky;top:0;z-index:5;flex-wrap:wrap;}
 header .logo{font-size:20px;}
-.badge{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.5px;padding:3px 8px;border-radius:999px;border:1px solid var(--line);color:var(--t2);}
-.badge.demo{background:var(--v4);border-color:var(--v);color:var(--v3);}
+.badge{font-family:var(--vl-mono);font-size:10px;font-weight:700;letter-spacing:.5px;padding:3px 8px;border-radius:var(--r-pill);border:1px solid var(--line-strong);color:var(--muted);}
+.badge.demo{background:var(--accent-soft);border-color:var(--accent-text);color:var(--accent-text);}
 nav{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto;}
-nav button{background:none;border:none;color:var(--t2);font-weight:600;padding:8px 12px;border-radius:8px;cursor:pointer;}
-nav button:hover{color:var(--t0);}
-nav button.on{background:var(--v4);color:var(--v3);}
-nav button .cnt{background:var(--v2);color:#fff;font-size:10px;font-weight:700;border-radius:999px;padding:1px 6px;margin-left:5px;}
+header .themebtn{flex:none;}
+nav button{background:none;border:none;color:var(--muted);font-weight:600;padding:8px 12px;border-radius:var(--r-sm);cursor:pointer;}
+nav button:hover{color:var(--text);}
+nav button.on{background:var(--accent-soft);color:var(--accent-text);}
+nav button .cnt{background:var(--accent);color:var(--on-accent);font-size:10px;font-weight:700;border-radius:var(--r-pill);padding:1px 6px;margin-left:5px;}
 main{max-width:1180px;margin:0 auto;padding:22px 24px 60px;}
-h2{font-family:var(--syne);font-size:20px;font-weight:600;letter-spacing:.5px;margin-bottom:14px;}
-h3{font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.8px;margin:24px 0 10px;}
+h2{font-size:20px;font-weight:700;margin-bottom:14px;}
+h3{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin:24px 0 10px;}
 .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;}
 .toolbar .inp{max-width:280px;}
-.seg{display:flex;background:var(--deep);border:1px solid var(--line);border-radius:10px;padding:3px;}
-.seg button{background:none;border:none;color:var(--t2);font-weight:600;padding:6px 12px;border-radius:7px;cursor:pointer;}
-.seg button.on{background:var(--card);color:var(--t0);}
+.seg{display:flex;background:var(--surface);border:1px solid var(--vl-line);border-radius:var(--r-sm);padding:3px;}
+.seg button{background:none;border:none;color:var(--muted);font-weight:600;padding:6px 12px;border-radius:9px;cursor:pointer;}
+.seg button:hover{color:var(--text);}
+.seg button.on{background:var(--surface-2);color:var(--text);}
 
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;}
-.tile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;}
-.tile .lbl{font-size:11.5px;color:var(--t2);font-weight:600;}
-.tile .val{font-family:var(--syne);font-size:28px;font-weight:600;margin-top:6px;font-variant-numeric:tabular-nums;}
-.tile .val small{font-family:var(--inter);font-size:12px;color:var(--t2);font-weight:600;margin-left:4px;}
-.tile .sub{font-size:11.5px;color:var(--t2);margin-top:4px;}
-.tile.accent{border-color:var(--v);background:linear-gradient(160deg,var(--v4),var(--card));}
+.tile{background:var(--surface);border:1px solid var(--vl-line);border-radius:var(--r-md);padding:16px;box-shadow:var(--shadow-1);}
+.tile .lbl{font-size:11.5px;color:var(--muted);font-weight:600;}
+.tile .val{font-family:var(--vl-mono);font-size:26px;font-weight:700;margin-top:6px;font-variant-numeric:tabular-nums;}
+.tile .val small{font-family:var(--font);font-size:12px;color:var(--muted);font-weight:600;margin-left:4px;}
+.tile .sub{font-size:11.5px;color:var(--muted);margin-top:4px;}
+.tile.accent{border-color:var(--accent-text);background:linear-gradient(160deg,var(--accent-soft),var(--surface));}
 
-.tbl-wrap{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow-x:auto;}
+.tbl-wrap{background:var(--surface);border:1px solid var(--vl-line);border-radius:var(--r-md);overflow-x:auto;}
 table{width:100%;border-collapse:collapse;}
-th{font-size:11px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap;}
-td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:middle;}
+th{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;text-align:left;padding:11px 14px;border-bottom:1px solid var(--vl-line);white-space:nowrap;}
+td{padding:11px 14px;border-bottom:1px solid var(--vl-line);vertical-align:middle;}
 tr:last-child td{border-bottom:none;}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;}
 td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
-.empty{padding:28px;text-align:center;color:var(--t2);}
-.pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;border:1px solid var(--line);white-space:nowrap;}
-.pill.live,.pill.pending,.pill.withdraw_requested{color:var(--gold);border-color:#D4AF3766;}
-.pill.finished,.pill.paid,.pill.held{color:var(--em);border-color:#10b98166;}
-.pill.cancelled,.pill.rejected,.pill.banned{color:var(--rose);border-color:#f43f5e66;}
-.pill.locked{color:var(--v3);border-color:var(--v);}
-.link{color:var(--v3);cursor:pointer;text-decoration:none;}
+.empty{padding:28px;text-align:center;color:var(--muted);}
+.pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:var(--r-pill);border:1px solid var(--line-strong);white-space:nowrap;}
+.pill.live,.pill.pending,.pill.withdraw_requested{color:var(--warn);border-color:currentColor;}
+.pill.finished,.pill.paid,.pill.held{color:var(--success);border-color:currentColor;}
+.pill.cancelled,.pill.rejected,.pill.banned{color:var(--danger);border-color:currentColor;}
+.pill.locked{color:var(--accent-text);border-color:currentColor;}
+.link{background:none;border:none;padding:0;font:inherit;text-align:inherit;color:var(--accent-text);cursor:pointer;text-decoration:none;}
 .link:hover{text-decoration:underline;}
-.note{background:var(--lift);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:12.5px;color:var(--t1);line-height:1.6;margin-bottom:14px;}
-.note b{color:var(--t0);}
+.note{background:var(--surface-2);border:1px solid var(--vl-line);border-radius:var(--r-sm);padding:12px 14px;font-size:12.5px;color:var(--text);line-height:1.6;margin-bottom:14px;}
+.note b{font-weight:700;}
 
-#drawer{position:fixed;inset:0;background:#000000b0;z-index:20;display:flex;justify-content:flex-end;}
-.drawer-card{width:100%;max-width:520px;background:var(--deep);border-left:1px solid var(--line);padding:22px;overflow-y:auto;}
+#drawer{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:20;display:flex;justify-content:flex-end;}
+.drawer-card{width:100%;max-width:520px;background:var(--surface);border-left:1px solid var(--vl-line);padding:22px;overflow-y:auto;color:var(--text);}
 .drawer-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:14px;}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px;margin-bottom:8px;}
-.kv span:nth-child(odd){color:var(--t2);}
-#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--card);border:1px solid var(--v);color:var(--t0);padding:10px 18px;border-radius:10px;opacity:0;transition:all .2s;z-index:50;pointer-events:none;font-weight:600;}
+.kv span:nth-child(odd){color:var(--muted);}
+#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--surface-2);border:1px solid var(--accent-text);color:var(--text);padding:10px 18px;border-radius:var(--r-sm);opacity:0;transition:all var(--dur) var(--ease);z-index:50;pointer-events:none;font-weight:600;box-shadow:var(--shadow-2);}
 #toast.on{opacity:1;transform:translateX(-50%);}
-@media(max-width:640px){header{padding:12px 14px;} main{padding:16px 14px 50px;} nav{margin-left:0;}}
+@media(max-width:640px){header{padding:12px 14px;} main{padding:16px 14px 50px;} nav{margin-left:0;order:3;width:100%;} header .themebtn{order:2;margin-left:auto;}}
 </style>
 </head>
 <body>
 
 <div id="login">
+  <button type="button" class="themebtn" data-act="theme" aria-pressed="true" aria-label="Тёмная тема" title="Сменить тему">
+    <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+    <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+  </button>
   <form class="login-card" id="login-form">
     <div class="logo"><em>Vloody</em> · Админ</div>
     <p>Введи секрет администратора (<span class="mono">ADMIN_SECRET</span>). Он хранится только в этой вкладке и исчезает при её закрытии.</p>
@@ -119,6 +132,10 @@ td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
       <button data-tab="revenue">Доход</button>
       <button data-act="logout" class="muted">Выйти</button>
     </nav>
+  <button type="button" class="themebtn" data-act="theme" aria-pressed="true" aria-label="Тёмная тема" title="Сменить тему">
+    <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+    <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+  </button>
   </header>
   <main id="view"></main>
 </div>
@@ -135,7 +152,7 @@ td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
   const fmt = (n) => (Number(n) || 0).toLocaleString("ru-RU");
   const when = (ts) => ts ? new Date(ts * 1000).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
   const pill = (st, label) => `<span class="pill ${esc(st)}">${esc(label || st)}</span>`;
-  const MODE = { wheel: "🎡 Колесо", vault: "🔒 Сейф", auction: "🕶 Аукцион" };
+  const MODE = { wheel: "Колесо", vault: "Сейф", auction: "Аукцион" };
   const PO = { pending: "ожидает", paid: "выплачено", rejected: "отклонено" };
   const PL = { live: "идёт", finished: "завершён", cancelled: "отменён" };
   const GS = { held: "в инвентаре", locked: "в раунде", withdraw_requested: "ждёт выдачи", withdrawn: "выдан" };
@@ -155,6 +172,17 @@ td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
     if (!res.ok) throw new Error((data && data.error) || "Ошибка " + res.status);
     return data;
   }
+
+  // ---------------------------------------------------------------- тема
+  function syncTheme() {
+    const dark = !window.VLTheme || window.VLTheme.get() === "dark";
+    document.querySelectorAll("[data-act=theme]").forEach((b) => {
+      b.setAttribute("aria-pressed", dark ? "true" : "false");
+      b.setAttribute("aria-label", dark ? "Тёмная тема" : "Светлая тема");
+    });
+  }
+  document.addEventListener("vl:theme", syncTheme);
+  syncTheme();
 
   // ---------------------------------------------------------------- вход
   function logout(msg) {
@@ -244,11 +272,11 @@ td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
           ? `${pay}<button class="btn sm ok" data-payout="${r.id}" data-action="paid">Выплачено</button><button class="btn sm ghost" data-payout="${r.id}" data-action="reject">Отклонить</button>` : "";
         return `<tr>
           <td class="mono">#${r.id}</td>
-          <td><a class="link" data-user="${r.telegram_id}">${esc(r.username ? "@" + r.username : r.telegram_id)}</a></td>
-          <td>${ton ? "💎 TON" : "⭐ Stars"}</td>
-          <td class="mono"><span class="link" data-copy="${esc(r.destination)}" title="Скопировать">${esc(r.destination)}</span></td>
+          <td><button type="button" class="link" data-user="${r.telegram_id}">${esc(r.username ? "@" + r.username : r.telegram_id)}</button></td>
+          <td>${ton ? "TON" : "Stars"}</td>
+          <td class="mono"><button type="button" class="link mono" data-copy="${esc(r.destination)}" title="Скопировать">${esc(r.destination)}</button></td>
           <td class="num">${fmt(r.amount)}</td>
-          <td class="num"><b>${ton ? r.net_ton.toFixed(2) + " TON" : fmt(r.net) + " ⭐"}</b><div class="muted">комиссия ${fmt(r.commission)}</div></td>
+          <td class="num"><b>${ton ? r.net_ton.toFixed(2) + " TON" : fmt(r.net) + " Stars"}</b><div class="muted">комиссия ${fmt(r.commission)}</div></td>
           <td>${pill(r.status, PO[r.status])}</td><td class="muted">${when(r.ts)}</td>
           <td><div class="acts">${acts}</div></td></tr>`;
       });
@@ -262,7 +290,7 @@ td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
       const { items } = await api("pools?status=" + filters.pools);
       const rows = items.map((p) => `<tr>
         <td class="mono">#${p.id}</td><td>${esc(p.emoji)} ${esc(p.title)}</td><td>${MODE[p.mode] || esc(p.mode)}</td>
-        <td><a class="link" data-user="${p.organizer_tid}">${esc(p.organizer)}</a></td>
+        <td><button type="button" class="link" data-user="${p.organizer_tid}">${esc(p.organizer)}</button></td>
         <td class="num">${fmt(p.bank)}</td><td class="num">${p.participants} / ${p.entries}</td>
         <td>${pill(p.status, PL[p.status])}${p.winner ? ` <span class="muted">→ ${esc(p.winner)}</span>` : ""}</td>
         <td class="num">${p.status === "finished" ? fmt(p.commission) : "—"}</td>
@@ -277,7 +305,7 @@ td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
     async users(v) {
       const { items } = await api("users?q=" + encodeURIComponent(filters.users));
       const rows = items.map((u) => `<tr>
-        <td><a class="link" data-user="${u.telegram_id}">${esc(u.name)}</a>${u.banned ? " " + pill("banned", "бан") : ""}</td>
+        <td><button type="button" class="link" data-user="${u.telegram_id}">${esc(u.name)}</button>${u.banned ? " " + pill("banned", "бан") : ""}</td>
         <td class="mono">${u.telegram_id}</td><td class="num"><b>${fmt(u.balance)}</b></td>
         <td class="num">${fmt(u.staked)}</td><td class="num">${fmt(u.earned)}</td><td class="num">${u.level}</td>
         <td class="muted">${when(u.registered_ts)}</td>
@@ -293,7 +321,7 @@ td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
       const { items } = await api("gifts?status=" + filters.gifts);
       const rows = items.map((g) => `<tr>
         <td class="mono">#${g.id}</td><td>${esc(g.emoji)} ${esc(g.name)}</td>
-        <td><a class="link" data-user="${g.owner_tid}">${esc(g.owner)}</a></td>
+        <td><button type="button" class="link" data-user="${g.owner_tid}">${esc(g.owner)}</button></td>
         <td>${pill(g.status, GS[g.status])}</td><td>${g.source === "win" ? "выигран" : "внесён"}</td>
         <td class="num">${g.transfer_fee || "—"}</td><td class="mono muted">${esc(g.tg_gift_id || "демо")}</td>
         <td class="muted">${when(g.created_ts)}</td></tr>`);
@@ -323,7 +351,7 @@ td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
       <div class="drawer-head"><div><h2 style="margin:0">${esc(u.name)}</h2><span class="mono muted">ID ${u.telegram_id}</span>${u.banned ? " " + pill("banned", "заблокирован") : ""}</div>
         <button class="btn sm ghost" data-act="drawer-close">Закрыть</button></div>
       <div class="kv"><span>Баланс</span><b>${fmt(u.balance)} VLD</b>
-        <span>Пригласил</span><span>${u.referred_by ? `<a class="link" data-user="${u.referred_by}">ID ${u.referred_by}</a>` : "—"}</span>
+        <span>Пригласил</span><span>${u.referred_by ? `<button type="button" class="link" data-user="${u.referred_by}">ID ${u.referred_by}</button>` : "—"}</span>
         <span>Реферальный доход</span><span>${fmt(u.referral_earned)} VLD</span></div>
       <button class="btn sm ghost" data-ban="${u.telegram_id}" data-action="${u.banned ? "unban" : "ban"}" data-drawer="1">${u.banned ? "Разблокировать" : "Заблокировать"}</button>
       <h3>Подарки</h3>
@@ -345,6 +373,7 @@ td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
     if ((el = t("[data-act]"))) {
       const a = el.dataset.act;
       if (a === "logout") return logout();
+      if (a === "theme") { if (window.VLTheme) window.VLTheme.toggle(); return syncTheme(); }
       if (a === "drawer-close") return $("drawer").classList.add("hid");
       if (a === "ton-scan") {
         el.disabled = true;
