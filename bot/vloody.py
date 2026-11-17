@@ -81,7 +81,7 @@ DEMO_GIFTS = [("Plush Pepe", "🐸", "plushpepe-1337"), ("Evil Eye", "👁", "ev
 def clean_slug(raw):
     """slug NFT-подарка (plushpepe-1337): только если проходит SLUG_RE, иначе None."""
     slug = str(raw or "").strip().lower()
-    return slug if SLUG_RE.match(slug) else None
+    return slug if SLUG_RE.fullmatch(slug) else None
 
 
 # ------------------------------------------------------------------ хелперы

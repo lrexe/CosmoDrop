@@ -101,7 +101,7 @@ def create_app():
         # публичный маршрут: сначала дешёвая проверка формата, потом БД, и только потом сеть;
         # отдаём лишь slug'и, которые есть у нас в gift_items (это не открытый прокси)
         miss = (jsonify({"error": "not found"}), 404)
-        if ext not in giftart.EXTS or not giftart.SLUG_RE.match(slug):
+        if ext not in giftart.EXTS or not giftart.SLUG_RE.fullmatch(slug):
             return miss
         if not GiftItem.query.filter_by(slug=slug).first():
             return miss

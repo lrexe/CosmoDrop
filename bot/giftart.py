@@ -8,7 +8,8 @@ import time
 import urllib.parse
 import urllib.request
 
-SLUG_RE = re.compile(r"^[a-z0-9]{2,40}-\d{1,7}$")
+# re.ASCII + fullmatch everywhere: no non-ASCII digits and no trailing newline (a bare `$` accepts one)
+SLUG_RE = re.compile(r"^[a-z0-9]{2,40}-\d{1,7}$", re.ASCII)
 # ext -> (суффикс на CDN, content-type, лимит в байтах)
 EXTS = {"jpg": (".medium.jpg", "image/jpeg", 1024 * 1024),
         "webp": (".webp", "image/webp", 1024 * 1024),
@@ -49,7 +50,29 @@ def _fetch(slug, ext):
         data = resp.read(limit + 1)
     if not data or len(data) > limit:
         return None
+    if ext == "json" and not _safe_lottie(data):
+        return None
     return data
+
+
+def _safe_lottie(data):
+    """Тело .lottie.json: JSON-объект с ключами v/fr/layers и без lottie-выражений (свойство "x" со строкой)."""
+    try:
+        doc = json.loads(data)
+    except (ValueError, RecursionError):
+        return False
+    if not isinstance(doc, dict) or not all(k in doc for k in ("v", "fr", "layers")):
+        return False
+    stack = [doc]                     # обход без рекурсии: глубина вложенности не ограничена стеком Python
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            if isinstance(node.get("x"), str):
+                return False
+            stack.extend(v for v in node.values() if isinstance(v, (dict, list)))
+        else:
+            stack.extend(v for v in node if isinstance(v, (dict, list)))
+    return True
 
 
 def _write_cache(path, data):
@@ -75,7 +98,7 @@ def get_art(slug, ext):
     """(байты, content-type) или None. Сначала диск, потом CDN."""
     if not isinstance(slug, str) or not isinstance(ext, str):
         return None
-    if ext not in EXTS or not SLUG_RE.match(slug):
+    if ext not in EXTS or not SLUG_RE.fullmatch(slug):
         return None
     ctype = EXTS[ext][1]
     path = os.path.join(CACHE_DIR, f"{slug}.{ext}")

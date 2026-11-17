@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#070b14">
 <title>Vloody</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -17,7 +17,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/vl-overlays.css') }}">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="{{ url_for('static', filename='js/vl-theme.js') }}"></script>
-<script src="https://unpkg.com/@tonconnect/ui@2/dist/tonconnect-ui.min.js" onerror="window.TON_CONNECT_FAILED=true"></script>
+<script src="https://unpkg.com/@tonconnect/ui@2.4.4/dist/tonconnect-ui.min.js" integrity="sha384-sSX7t/8RIb6F0lgKBLCCytcRdsJv/+lBzIvFAnTlX7HymE9i9wCFIFOQ4iH7dJWO" crossorigin="anonymous" defer onerror="window.TON_CONNECT_FAILED=true"></script>
 <script>
   window.VL = { demo: {{ 'true' if DEMO_MODE else 'false' }}, bot: "{{ BOT_USERNAME }}", relay: "{{ RELAY_USERNAME }}", commission: {{ COMMISSION_PCT }} };
 </script>
@@ -549,6 +549,7 @@
       <div class="vl-dlg-hint"><span>Минимум <b class="num" id="sm-min">5</b> VLD</span><span>Баланс <b class="num" id="sm-bal">0</b></span></div>
       <label class="sr-only" for="sm-input">Своя сумма</label>
       <input class="input num vl-dlg-input" id="sm-input" type="number" inputmode="numeric" placeholder="Своя сумма" autocomplete="off">
+      <p class="vl-dlg-alert" id="sm-warn" role="alert"></p>
       <button type="button" class="vl-btn vl-btn-primary vl-btn-block vl-dlg-cta" data-act="stake-confirm">Подтвердить ставку</button>
     </div>
   </div>
@@ -710,7 +711,7 @@
 </div>
 
 <div id="toast" role="status" aria-live="polite"></div>
-<script src="{{ url_for('static', filename='js/vl-fx.js') }}"></script>
-<script src="{{ url_for('static', filename='js/vloody.js') }}"></script>
+<script src="{{ url_for('static', filename='js/vl-fx.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/vloody.js') }}" defer></script>
 </body>
 </html>

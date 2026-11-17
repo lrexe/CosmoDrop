@@ -186,7 +186,9 @@
   }
 
   // ------------------------------------------------------------------ gift animation (lottie)
-  const LOTTIE_URL = "https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js";
+  const LOTTIE_URL = "https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie_light.min.js";
+  // SRI of the exact file (sha384): a changed or tampered build is refused and the static picture stays
+  const LOTTIE_SRI = "sha384-Vtbz3QbtSBqleuQry6kQy5smig1gPZCXUoTFN7RmN9QW47xpEDsV/J1w0Pw0rDJu";
   let lottieLib = null; // Promise<lottie> — the script is requested once per page, a failure is remembered too
   function loadLottie() {
     if (!lottieLib) {
@@ -194,6 +196,8 @@
         if (window.lottie && window.lottie.loadAnimation) { resolve(window.lottie); return; }
         const s = document.createElement("script");
         s.src = LOTTIE_URL;
+        s.integrity = LOTTIE_SRI;
+        s.crossOrigin = "anonymous";
         s.async = true;
         s.onload = () => (window.lottie && window.lottie.loadAnimation ? resolve(window.lottie) : reject(new Error("lottie")));
         s.onerror = () => reject(new Error("lottie script"));
