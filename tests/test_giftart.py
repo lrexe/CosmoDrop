@@ -15,6 +15,7 @@ ok = True
 JPG = b"\xff\xd8\xff\xe0" + b"J" * 100
 JSON = b'{"v":"5.7","layers":[]}'
 hits = []
+trap_hits = []
 
 
 def check(name, cond, detail=""):
@@ -27,6 +28,12 @@ class CDN(BaseHTTPRequestHandler):
     def do_GET(self):
         hits.append(self.path)
         p = self.path
+        if "testgift-7." in p:
+            self.send_response(302)
+            self.send_header("Location", "http://127.0.0.1:5084/evil.medium.jpg")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         if "testgift-1." in p:
             body, ctype, code = (JSON, "application/json", 200) if p.endswith(".json") else (JPG, "image/jpeg", 200)
         elif "testgift-3." in p:
@@ -48,7 +55,24 @@ class CDN(BaseHTTPRequestHandler):
 srv = HTTPServer(("127.0.0.1", 5082), CDN)
 threading.Thread(target=srv.serve_forever, daemon=True).start()
 
-SLUGS = [f"testgift-{i}" for i in (1, 2, 3, 4, 5, 6)]
+
+class Trap(BaseHTTPRequestHandler):
+    def do_GET(self):
+        trap_hits.append(self.path)
+        self.send_response(200)
+        self.send_header("Content-Type", "image/jpeg")
+        self.send_header("Content-Length", str(len(JPG)))
+        self.end_headers()
+        self.wfile.write(JPG)
+
+    def log_message(self, *a):
+        pass
+
+
+trap = HTTPServer(("127.0.0.1", 5084), Trap)
+threading.Thread(target=trap.serve_forever, daemon=True).start()
+
+SLUGS = [f"testgift-{i}" for i in (1, 2, 3, 4, 5, 6, 7)]
 cache_dir = os.path.join(ROOT, "instance", "gift_cache")
 
 
@@ -130,6 +154,13 @@ try:
     left = [f for f in (os.listdir(cache_dir) if os.path.isdir(cache_dir) else []) if ".tmp" in f or f.startswith("tmp")]
     check("no temp files left behind", not left, left)
 
+    n = len(hits)
+    r = c.get("/gift-art/testgift-7.jpg")
+    r2 = c.get("/gift-art/testgift-7.jpg")
+    check("CDN redirect is never followed -> 404, target got 0 hits, nothing cached",
+          r.status_code == 404 and r2.status_code == 404 and not trap_hits and len(hits) == n + 1
+          and not os.path.exists(os.path.join(cache_dir, "testgift-7.jpg")), (trap_hits, len(hits) - n))
+
     r = c.get("/gift-art/testgift-1.json")
     check("ext=json returns application/json", r.status_code == 200 and r.mimetype == "application/json"
           and r.data == JSON, (r.status_code, r.mimetype))
@@ -138,6 +169,7 @@ try:
 finally:
     cleanup()
     srv.shutdown()
+    trap.shutdown()
 
 print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)

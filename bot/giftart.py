@@ -21,6 +21,16 @@ _neg = {}
 _lock = threading.Lock()
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Редиректы не выполняем: 3xx от CDN — это промах (иначе можно уйти на внутренний адрес)."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+_opener = urllib.request.build_opener(_NoRedirect)
+
+
 def _cdn_base():
     return os.getenv("GIFT_CDN_BASE", "https://nft.fragment.com/gift").rstrip("/")
 
@@ -29,7 +39,7 @@ def _fetch(slug, ext):
     suffix, ctype, limit = EXTS[ext]
     req = urllib.request.Request(f"{_cdn_base()}/{slug}{suffix}",
                                  headers={"User-Agent": "vloody-giftart"})
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+    with _opener.open(req, timeout=TIMEOUT) as resp:
         if resp.status != 200:
             return None
         if resp.headers.get_content_type() != ctype:
