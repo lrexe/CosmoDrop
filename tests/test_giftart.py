@@ -1,9 +1,11 @@
 """Сервис картинок NFT-подарков на ПОДДЕЛЬНОМ CDN (настоящий nft.fragment.com не вызывается)."""
-import os, sys, threading
+import hashlib, hmac, json, os, sys, threading, time
+from urllib.parse import urlencode
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 os.environ.update(BOT_TOKEN="123456:MAIN-TEST", SECRET_KEY="x" * 32, DEMO_MODE="",
-                  RATE_LIMIT="100000", GIFT_CDN_BASE="http://127.0.0.1:5082")
+                  RATE_LIMIT="100000", GIFT_CDN_BASE="http://127.0.0.1:5082",
+                  TELEGRAM_API_BASE="http://127.0.0.1:5083")
 ROOT = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT); os.chdir(ROOT)
 from app import app                                            # noqa: E402
@@ -72,6 +74,64 @@ class Trap(BaseHTTPRequestHandler):
 trap = HTTPServer(("127.0.0.1", 5084), Trap)
 threading.Thread(target=trap.serve_forever, daemon=True).start()
 
+# ---- поддельный Bot API (настоящий Telegram не вызывается) ----
+GID_A, GID_B, GID_C = "5170145012310081615", "5170233102089322756", "5170250947678437525"
+WEBP = b"RIFF" + (100).to_bytes(4, "little") + b"WEBP" + b"W" * 100
+api_hits = {"gifts": 0, "getfile": 0, "file": 0}
+api_paths = []
+api_mode = {"fail": False}
+THUMBS = {"thumb-A": "thumbnails/file_1.webp", "thumb-B": "stickers/file_2.tgs", "thumb-C": "thumbnails/file_3.webp"}
+
+
+class BotApi(BaseHTTPRequestHandler):
+    def _send(self, code, body, ctype="application/json"):
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        path, _, query = self.path.partition("?")
+        api_paths.append(path)
+        if "/getAvailableGifts" in path:
+            api_hits["gifts"] += 1
+            if api_mode["fail"]:
+                return self._send(500, b'{"ok":false}')
+            gifts = [{"id": g, "star_count": n, "sticker": {"file_id": "x", "emoji": e, "is_animated": True,
+                                                            "thumbnail": {"file_id": t}}}
+                     for g, n, e, t in ((GID_A, 15, "\U0001F9F8", "thumb-A"), (GID_B, 25, "\U0001F339", "thumb-B"),
+                                        (GID_C, 50, "\U0001F381", "thumb-C"))]
+            return self._send(200, json.dumps({"ok": True, "result": {"gifts": gifts}}).encode())
+        if "/getFile" in path:
+            api_hits["getfile"] += 1
+            fid = query.split("file_id=")[-1]
+            if fid not in THUMBS:
+                return self._send(400, b'{"ok":false}')
+            return self._send(200, json.dumps({"ok": True, "result": {"file_path": THUMBS[fid]}}).encode())
+        if "/file/bot" in path:
+            api_hits["file"] += 1
+            if path.endswith("file_3.webp"):
+                return self._send(200, b"RIFF" + b"X" * (200 * 1024 + 1), "application/octet-stream")
+            return self._send(200, WEBP, "application/octet-stream")
+        self._send(404, b"{}")
+
+    def log_message(self, *a):
+        pass
+
+
+botapi = HTTPServer(("127.0.0.1", 5083), BotApi)
+threading.Thread(target=botapi.serve_forever, daemon=True).start()
+
+
+def hdr():
+    fields = {"auth_date": str(int(time.time())), "user": json.dumps({"id": OWNER, "first_name": "art-test"})}
+    chk = "\n".join(f"{k}={v}" for k, v in sorted(fields.items()))
+    secret = hmac.new(b"WebAppData", os.environ["BOT_TOKEN"].encode(), hashlib.sha256).digest()
+    fields["hash"] = hmac.new(secret, chk.encode(), hashlib.sha256).hexdigest()
+    return {"X-Telegram-Init-Data": urlencode(fields)}
+
+
 SLUGS = [f"testgift-{i}" for i in (1, 2, 3, 4, 5, 6, 7)]
 cache_dir = os.path.join(ROOT, "instance", "gift_cache")
 
@@ -84,12 +144,13 @@ def cleanup():
             db.session.delete(me)
         GiftItem.query.filter(GiftItem.slug.in_(SLUGS)).delete(synchronize_session=False)
         db.session.commit()
-    for s in SLUGS:
-        for ext in ("jpg", "webp", "json"):
-            try:
-                os.remove(os.path.join(cache_dir, f"{s}.{ext}"))
-            except OSError:
-                pass
+    names = [f"{s}.{ext}" for s in SLUGS for ext in ("jpg", "webp", "json")]
+    names += [f"regular-{g}.webp" for g in (GID_A, GID_B, GID_C)]
+    for n in names:
+        try:
+            os.remove(os.path.join(cache_dir, n))
+        except OSError:
+            pass
 
 
 cleanup()
@@ -166,10 +227,85 @@ try:
           and r.data == JSON, (r.status_code, r.mimetype))
     check("get_art direct call", giftart.get_art("testgift-1", "jpg") == (JPG, "image/jpeg")
           and giftart.get_art("../x-1", "jpg") is None and giftart.get_art("testgift-1", "png") is None)
+    # ---- обычные подарки за Stars ----
+    giftart._cat["at"], giftart._cat["items"] = 0, None
+    api_hits.update(gifts=0, getfile=0, file=0)
+    r = c.get("/api/gifts/catalog", headers=hdr())
+    j = r.get_json() or {}
+    check("catalog lists gifts with image urls", r.status_code == 200 and j.get("items") == [
+        {"id": g, "stars": n, "image": f"/gift-art/regular/{g}.webp"}
+        for g, n in ((GID_A, 15), (GID_B, 25), (GID_C, 50))], j)
+    check("catalog requires auth (401 without initData)", c.get("/api/gifts/catalog").status_code == 401)
+    check("regular_catalog elements have id/stars/emoji", giftart.regular_catalog()[0] == {
+        "id": GID_A, "stars": 15, "emoji": "\U0001F9F8"})
+    c.get("/api/gifts/catalog", headers=hdr())
+    check("catalog cached (one getAvailableGifts call for two requests)", api_hits["gifts"] == 1, api_hits)
+
+    r = c.get(f"/gift-art/regular/{GID_A}.webp")
+    check("regular image served as image/webp and cached on disk",
+          r.status_code == 200 and r.mimetype == "image/webp" and r.data == WEBP
+          and os.path.isfile(os.path.join(cache_dir, f"regular-{GID_A}.webp")), (r.status_code, r.mimetype))
+    r = c.get(f"/gift-art/regular/{GID_A}.webp")
+    check("image served from our cache on the second request (fake getFile called once)",
+          r.status_code == 200 and r.data == WEBP and api_hits["getfile"] == 1 and api_hits["file"] == 1, api_hits)
+    check("token only in the Bot API path, never in the client url",
+          all("MAIN-TEST" in p for p in api_paths) and "MAIN-TEST" not in json.dumps(j))
+
+    n = dict(api_hits)
+    r = c.get("/gift-art/regular/5170145012310081999.webp")
+    check("unknown id -> 404", r.status_code == 404 and r.get_json() == {"error": "not found"}
+          and api_hits["getfile"] == n["getfile"])
+    r = c.get("/gift-art/regular/1.webp")
+    check("an id that merely looks numeric but is not in the catalog (e.g. 1) -> 404 with zero getFile calls",
+          r.status_code == 404 and api_hits["getfile"] == n["getfile"] and api_hits["file"] == n["file"], api_hits)
+    codes = [c.get(u).status_code for u in ("/gift-art/regular/abc.webp", "/gift-art/regular/-5.webp",
+                                            f"/gift-art/regular/{GID_A}.jpg", "/gift-art/regular/../x.webp")]
+    check("malformed regular ids/ext -> 404", codes == [404] * 4, codes)
+    r1, r2 = c.get(f"/gift-art/regular/{GID_B}.webp"), c.get(f"/gift-art/regular/{GID_C}.webp")
+    check(".tgs file or >200 KB -> 404 and nothing cached",
+          r1.status_code == 404 and r2.status_code == 404
+          and not os.path.exists(os.path.join(cache_dir, f"regular-{GID_B}.webp"))
+          and not os.path.exists(os.path.join(cache_dir, f"regular-{GID_C}.webp")))
+    left = [f for f in os.listdir(cache_dir) if ".tmp" in f or f.startswith("tmp")]
+    check("no temp files left behind (regular)", not left, left)
+
+    saved = {k: os.environ.pop(k, None) for k in ("BOT_TOKEN", "RELAY_BOT_TOKEN")}
+    try:
+        giftart._cat["at"], giftart._cat["items"] = 0, None
+        n = api_hits["gifts"]
+        try:
+            res = giftart.regular_catalog()
+        except Exception as e:
+            res = e
+        check("no BOT_TOKEN and no RELAY_BOT_TOKEN -> empty catalog, no exception",
+              res == [] and api_hits["gifts"] == n, res)
+        os.environ["RELAY_BOT_TOKEN"] = "777:RELAY-TEST"
+        res = giftart.regular_catalog()
+        check("RELAY_BOT_TOKEN fallback when BOT_TOKEN unset",
+              len(res) == 3 and "RELAY-TEST" in api_paths[-1], api_paths[-1])
+    finally:
+        os.environ.pop("RELAY_BOT_TOKEN", None)
+        for k, v in saved.items():
+            if v is not None:
+                os.environ[k] = v
+    giftart._cat["at"], giftart._cat["items"] = 0, None
+    api_mode["fail"] = True
+    try:
+        try:
+            res = giftart.regular_catalog()
+        except Exception as e:
+            res = e
+        r = c.get("/api/gifts/catalog", headers=hdr())
+        check("API answer 5xx from Telegram -> empty catalog, no exception",
+              res == [] and r.status_code == 200 and r.get_json() == {"items": []}, (res, r.status_code))
+    finally:
+        api_mode["fail"] = False
+        giftart._cat["at"], giftart._cat["items"] = 0, None
 finally:
     cleanup()
     srv.shutdown()
     trap.shutdown()
+    botapi.shutdown()
 
 print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)

@@ -112,6 +112,23 @@ def create_app():
         resp.headers["Cache-Control"] = "public, max-age=86400"
         return resp
 
+    @app.route("/gift-art/regular/<int:gid>.webp")
+    def gift_art_regular(gid):
+        # id в пути — только ключ поиска: отдаём лишь подарки из каталога getAvailableGifts
+        art = giftart.get_regular_art(str(gid))
+        if art is None:
+            return jsonify({"error": "not found"}), 404
+        resp = app.response_class(art[0], mimetype=art[1])
+        resp.headers["Cache-Control"] = "public, max-age=86400"
+        return resp
+
+    @app.route("/api/gifts/catalog")
+    def gifts_catalog():
+        # под общей проверкой подписи /api/; image — наш маршрут, токен бота наружу не уходит
+        return jsonify({"items": [{"id": g["id"], "stars": g["stars"],
+                                   "image": f"/gift-art/regular/{g['id']}.webp"}
+                                  for g in giftart.regular_catalog()]})
+
     @app.route("/health")
     def health():
         return jsonify({"status": "ok"})
