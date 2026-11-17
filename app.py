@@ -9,7 +9,8 @@ load_env()        # секреты из .env — до импорта модул�
 from flask import Flask, render_template, jsonify, request  # noqa: E402
 from flask_migrate import Migrate
 
-from models import db, ensure_columns
+from models import db, ensure_columns, GiftItem
+from bot import giftart
 from bot.auth import init_security, DEMO_MODE, WEBHOOK_SECRET
 from bot.vloody import vloody_bp, handle_payment_update, COMMISSION_RATE
 
@@ -93,6 +94,22 @@ def create_app():
         resp = app.make_response(render_template("admin.html"))
         resp.headers["X-Robots-Tag"] = "noindex, nofollow"
         resp.headers["Cache-Control"] = "no-store"
+        return resp
+
+    @app.route("/gift-art/<slug>.<ext>")
+    def gift_art(slug, ext):
+        # публичный маршрут: сначала дешёвая проверка формата, потом БД, и только потом сеть;
+        # отдаём лишь slug'и, которые есть у нас в gift_items (это не открытый прокси)
+        miss = (jsonify({"error": "not found"}), 404)
+        if ext not in giftart.EXTS or not giftart.SLUG_RE.match(slug):
+            return miss
+        if not GiftItem.query.filter_by(slug=slug).first():
+            return miss
+        art = giftart.get_art(slug, ext)
+        if art is None:
+            return miss
+        resp = app.response_class(art[0], mimetype=art[1])
+        resp.headers["Cache-Control"] = "public, max-age=86400"
         return resp
 
     @app.route("/health")

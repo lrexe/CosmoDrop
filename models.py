@@ -282,12 +282,16 @@ class GiftItem(db.Model):
     source = db.Column(db.String(10), default="deposit")          # deposit | win
     # сколько звёзд Telegram берёт за передачу этого подарка — оплачивает тот, кто выводит
     transfer_fee = db.Column(db.Integer, default=0)
+    # slug NFT-подарка (plushpepe-1337) — по нему берём настоящую картинку с CDN
+    slug = db.Column(db.String(64), index=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
         return {"id": self.id, "name": self.name, "emoji": self.emoji, "art": self.art,
                 "status": self.status, "source": self.source,
-                "transfer_fee": self.transfer_fee or 0}
+                "transfer_fee": self.transfer_fee or 0,
+                "image": f"/gift-art/{self.slug}.jpg" if self.slug else None,
+                "anim": f"/gift-art/{self.slug}.json" if self.slug else None}
 
 
 class Pool(db.Model):
@@ -398,7 +402,7 @@ class TonDeposit(db.Model):
 
 def ensure_columns():
     """Мини-миграция: добавляет в существующие таблицы колонки, появившиеся позже."""
-    added = {"gift_items": [("transfer_fee", "INTEGER DEFAULT 0")],
+    added = {"gift_items": [("transfer_fee", "INTEGER DEFAULT 0"), ("slug", "VARCHAR(64)")],
              "payout_requests": [("net_nano", "BIGINT DEFAULT 0")]}
     inspector = db.inspect(db.engine)
     for table, columns in added.items():

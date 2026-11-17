@@ -19,3 +19,4 @@ instance/*.db
 .DS_Store
 instance/relay_state.json*
 .superpowers/
+instance/gift_cache/
