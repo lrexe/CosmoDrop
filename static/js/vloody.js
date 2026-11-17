@@ -16,14 +16,11 @@
     vault: "Участники платят за попытку угадать секретное число. Угадавший забирает подарок сразу.",
     auction: "Ставки скрыты и не возвращаются. Подарок получает тот, кто накопил больше всех.",
   };
-  const TX_ICON = { stake: "🎟", vault: "🔒", bid: "🕶", organizer_payout: "💰", referral: "🤝",
-    transfer_out: "↗", transfer_in: "↙", payout: "⬇️", payout_refund: "↩", deposit: "⭐",
-    gift_fee: "🎁", gift_fee_refund: "↩" };
 
   const state = {
     profile: null, pools: { live: [], finished: [] }, filter: "all",
     pool: null, back: "home", wheelMode: "av", wheelRot: 0, spinning: false,
-    create: { mode: "wheel", gift: null }, gifts: [], lb: "month", offset: 0,
+    create: { mode: "wheel", gift: null }, gifts: [], lb: "month", offset: 0, pt: "inv",
   };
 
   // ------------------------------------------------------------------ утилиты
@@ -783,40 +780,84 @@
     } catch (e) { toast(e.message); }
   }
 
-  // ================================================================== ИВЕНТЫ
+  // ================================================================== ЛИДЕРЫ
+  // Разметка — templates/vloody.html (#sc-events), стили — static/css/vl-screens.css.
+  const plural = (n, f) => {
+    const a = Math.abs(n) % 100, b = a % 10;
+    return f[a > 10 && a < 20 ? 2 : b === 1 ? 0 : b >= 2 && b <= 4 ? 1 : 2];
+  };
+  const vld = (n) => `<span class="num">${fmt(n)}</span><small>VLD</small>`;
+  // картинка подарка для подарка без своего поля image (ленту победителей сервер отдаёт без картинки) —
+  // берём её из уже загруженных раундов; если раунда в кэше нет, giftImg покажет запасную плитку
+  function poolPic(id) {
+    const p = state.pools.live.concat(state.pools.finished).find((x) => x.id === id);
+    return p ? p.image : null;
+  }
+
   async function loadEvents() {
     try {
       const [lb, win] = await Promise.all([api("/api/leaderboard/" + state.lb), api("/api/winners")]);
-      const label = { day: "День", week: "Неделю", month: "Месяц", all: "всё время" }[state.lb];
+      const label = { day: "день", week: "неделю", month: "месяц", all: "всё время" }[state.lb];
       const me = lb.me;
       $("lb-banner").innerHTML = me.rank
-        ? `Твой ранг за ${label}: <b>#${me.rank}</b> · оборот <b>${fmt(me.volume)}</b> ${STAR}` +
-          (me.to_top100 ? ` · до Топ-100 ещё <b>${fmt(me.to_top100)}</b> ${STAR}` : "")
-        : `Ты ещё не участвовал за ${label}. Сделай ставку — и попадёшь в рейтинг.`;
-      const top = lb.entries.slice(0, 3), order = [1, 0, 2], medal = ["🥇", "🥈", "🥉"];
-      $("lb-podium").innerHTML = top.length ? order.filter((i) => top[i]).map((i) => `
-        <div class="pod ${i === 0 ? "pod-1" : ""}">
-          <span class="pod-medal">${medal[i]}</span>
-          <div class="pod-av tier-${i === 0 ? 1 : 2}">${esc(top[i].avatar)}</div>
-          <div class="pod-name">${esc(top[i].name)}</div>
-          <div class="pod-val">${fmt(top[i].volume)} ${STAR}</div>
-        </div>`).join("") : "";
-      $("lb-list").innerHTML = lb.entries.slice(3).map((e) => `
-        <div class="lb-row ${e.is_me ? "me" : ""}">
-          <div class="lb-rank">${e.rank}</div><div class="lb-av">${esc(e.avatar)}</div>
-          <div class="grow"><div class="lb-name">${esc(e.name)}</div><div class="lb-sub">${e.wins} побед</div></div>
-          <div class="lb-val">${fmt(e.volume)}</div>
-        </div>`).join("") || (top.length ? "" : `<div class="empty-note">За этот период ставок не было</div>`);
+        ? `<div class="vl-ev-me-rank"><span>Твоё место</span><b class="num">#${fmt(me.rank)}</b></div>
+           <dl class="vl-ev-me-stats">
+             <div><dt>Оборот за ${label}</dt><dd>${vld(me.volume)}</dd></div>
+             <div><dt>Победы</dt><dd><span class="num">${fmt(me.wins)}</span></dd></div>
+             ${me.to_top100 ? `<div><dt>До топ-100</dt><dd>${vld(me.to_top100)}</dd></div>` : ""}
+           </dl>`
+        : `<div class="vl-ev-me-none">${icon("i-leaders", "ic-lg")}
+             <p>За ${label} ты ещё не делал ставок. Сыграй в любом раунде — и попадёшь в рейтинг.</p>
+             <button type="button" class="vl-btn vl-btn-ghost vl-btn-sm" data-tab="home">${icon("i-rounds")}К раундам</button></div>`;
+
+      const top = lb.entries.slice(0, 3);
+      $("lb-podium").innerHTML = top.map((e, i) => `
+        <li class="vl-pod-col vl-pod-${i + 1}${e.is_me ? " is-me" : ""}">
+          <div class="vl-pod-who">
+            <span class="vl-pod-av" aria-hidden="true">${esc(e.avatar)}</span>
+            <span class="vl-pod-name" title="${esc(e.name)}">${esc(e.name)}</span>
+            ${e.is_me ? YOU : ""}
+            <span class="vl-pod-vol">${vld(e.volume)}</span>
+          </div>
+          <div class="vl-pod-step"><span class="vl-pod-place num"><span class="sr-only">Место </span>${i + 1}</span></div>
+        </li>`).join("");
+      $("lb-podium").classList.toggle("hid", !top.length);
+
+      const rest = lb.entries.slice(3);
+      $("lb-list").innerHTML = rest.map((e) => `
+        <li class="vl-lb-row${e.is_me ? " is-me" : ""}">
+          <span class="vl-lb-rank num">${e.rank}</span>
+          <span class="vl-lb-av" aria-hidden="true">${esc(e.avatar)}</span>
+          <span class="vl-lb-id">
+            <span class="vl-lb-name" title="${esc(e.name)}">${esc(e.name)}</span>
+            <span class="vl-lb-sub">${e.is_me ? "это ты · " : ""}${fmt(e.wins)} ${plural(e.wins, ["победа", "победы", "побед"])}</span>
+          </span>
+          <span class="vl-lb-vol">${vld(e.volume)}</span>
+        </li>`).join("")
+        || (top.length ? "" : `<li class="vl-ev-empty">${emptyState("i-leaders", `За ${label} ставок не было`)}</li>`);
+
       $("winners-list").innerHTML = win.items.length ? win.items.map((w) => `
-        <div class="tx rp" data-pool="${w.pool_id}">
-          <div class="tx-ic">${esc(w.emoji)}</div>
-          <div class="grow"><div class="tx-n">${esc(w.title)}</div><div class="tx-s">${esc(w.winner)} · ${ago(w.ts)}</div></div>
-          <div class="tx-r"><div class="tx-v pos">Выиграл</div><div class="tx-d">банк ${fmt(w.bank)}</div></div>
-        </div>`).join("") : `<div class="empty-note">Победителей пока нет</div>`;
+        <li><button type="button" class="vl-wf" data-pool="${+w.pool_id}">
+          <span class="vl-wf-pic">${giftImg({ image: poolPic(w.pool_id), title: w.title }, "vl-wf-img")}</span>
+          <span class="vl-wf-id">
+            <span class="vl-wf-t" title="${esc(w.title)}">${esc(w.title)}</span>
+            <span class="vl-wf-s"><b>${esc(w.winner)}</b> · ${ago(w.ts)}</span>
+          </span>
+          <span class="vl-wf-bank">${vld(w.bank)}</span>
+        </button></li>`).join("")
+        : `<li class="vl-ev-empty">${emptyState("i-clock", "Победителей пока нет")}</li>`;
+      VLFx.stagger($("lb-podium")); VLFx.stagger($("lb-list"));
     } catch (e) { toast(e.message); }
   }
 
   // ================================================================== СОЗДАНИЕ
+  // Разметка — templates/vloody.html (#sc-create), стили — static/css/vl-screens.css.
+  // Шаги 1–3 слева; шаг 4 (#cr-sum… — сводка и кнопка) на десктопе липкий справа, на телефоне — последним блоком.
+  const giftArt = (g) => ({ image: g.image, title: g.name });
+  const timeLbl = (min) => (min < 60 ? `${min} мин` : `${min / 60} ч`);
+  const chipHtml = (v, label, on) =>
+    `<button type="button" class="vl-chip${on ? " is-on" : ""}" data-v="${v}" aria-pressed="${on}">${label}</button>`;
+
   async function loadGifts() {
     try { state.gifts = (await api("/api/inventory/gifts")).gifts; } catch (e) { state.gifts = []; }
     return state.gifts;
@@ -826,24 +867,81 @@
     await loadGifts();
     const held = state.gifts.filter((g) => g.status === "held");
     if (!held.find((g) => g.id === state.create.gift)) state.create.gift = held.length ? held[0].id : null;
-    $("cr-gifts").innerHTML = held.map((g) => `
-      <div class="mgi ${g.id === state.create.gift ? "sel" : ""}" data-gift="${g.id}">
-        <span class="mgi-em">${esc(g.emoji)}</span><div class="mgi-n">${esc(g.name)}</div>
-      </div>`).join("");
+    renderCreateGifts();
     renderCreateMode();
+  }
+
+  function renderCreateGifts() {
+    const held = state.gifts.filter((g) => g.status === "held");
+    const locked = state.gifts.filter((g) => g.status === "locked").length;
+    $("cr-deposit").classList.toggle("hid", !held.length);
+    if (!held.length) {
+      const relay = esc(VL.relay);
+      $("cr-gifts").innerHTML = `<div class="vl-cr-empty">
+        <span class="vl-cr-empty-ic">${icon("i-rounds", "ic-lg")}</span>
+        <div class="vl-cr-empty-b">
+          <p class="vl-cr-empty-t">Свободных подарков нет</p>
+          <ol class="vl-cr-empty-steps">
+            <li>Открой бота-хранителя <b>@${relay}</b> в Telegram</li>
+            <li>Отправь ему NFT-подарок через «Подарить»</li>
+            <li>Через минуту подарок появится здесь — выбери его и запусти раунд</li>
+          </ol>
+          ${locked ? `<p class="vl-cr-empty-s">Ещё ${locked} ${plural(locked, ["подарок", "подарка", "подарков"])} сейчас в активных раундах.</p>` : ""}
+          <button type="button" class="vl-btn vl-btn-primary vl-btn-sm" data-act="gift-deposit">${VL.demo
+            ? icon("i-create") + "Получить демо-подарок" : icon("i-send") + "Открыть @" + relay}</button>
+        </div></div>`;
+      return;
+    }
+    $("cr-gifts").innerHTML = held.map((g) => {
+      const on = g.id === state.create.gift;
+      return `<button type="button" class="vl-cr-gift${on ? " is-on" : ""}" data-gift="${g.id}" aria-pressed="${on}" title="${esc(g.name)}">
+        <span class="vl-cr-gift-pic">${giftImg(giftArt(g), "vl-cr-gift-img")}<span class="vl-cr-gift-ok" aria-hidden="true">${icon("i-check", "ic-sm")}</span></span>
+        <span class="vl-cr-gift-n">${esc(g.name)}</span>
+      </button>`;
+    }).join("");
   }
 
   function renderCreateMode() {
     const m = state.create.mode;
-    document.querySelectorAll("#cr-modes .mtab").forEach((b) => b.classList.toggle("on", b.dataset.cmode === m));
+    document.querySelectorAll("#cr-modes [data-cmode]").forEach((b) => {
+      const on = b.dataset.cmode === m;
+      b.classList.toggle("is-on", on); b.setAttribute("aria-pressed", String(on));
+    });
     $("cr-mode-hint").textContent = MODE_HINT[m];
-    $("cr-stake-lbl").textContent = m === "vault" ? "Ставка за попытку" : "Мин. ставка";
-    $("cr-stakes").innerHTML = STAKE_CHIPS[m].map((v, i) =>
-      `<div class="chip rp ${i === 0 ? "on" : ""}" data-v="${v}">${v} ${STAR}</div>`).join("");
+    $("cr-stake-lbl").textContent = m === "vault" ? "Ставка за попытку" : "Минимальная ставка";
+    $("cr-stakes").innerHTML = STAKE_CHIPS[m].map((v, i) => chipHtml(v, `<span class="num">${v}</span> VLD`, i === 0)).join("");
     $("cr-vault-box").classList.toggle("hid", m !== "vault");
     $("cr-time-box").classList.toggle("hid", m === "vault");
+    renderCreateSummary();
   }
-  const chipVal = (id) => { const c = document.querySelector(`#${id} .chip.on`); return c ? +c.dataset.v : null; };
+  const chipVal = (id) => { const c = document.querySelector(`#${id} .vl-chip.is-on`); return c ? +c.dataset.v : null; };
+
+  let sumGiftKey = null; // картинка в сводке пересобирается только при смене подарка
+  function renderCreateSummary() {
+    const m = state.create.mode, info = MODE_INFO[m];
+    const g = state.gifts.find((x) => x.id === state.create.gift && x.status === "held");
+    const pct = Number(VL.commission) || 0, stake = chipVal("cr-stakes") || 0;
+    const key = g ? `${g.id}|${g.image || ""}` : "";
+    if (key !== sumGiftKey) {
+      sumGiftKey = key;
+      $("cr-sum-gift").innerHTML = g ? giftImg(giftArt(g), "vl-cr-sum-img")
+        : `<span class="vl-cr-sum-none">${icon("i-rounds", "ic-lg")}</span>`;
+      $("cr-sum-name").textContent = g ? g.name : "Подарок не выбран";
+      $("cr-sum-name").title = g ? g.name : "";
+    }
+    $("cr-sum-mode").innerHTML = icon(info.icon) + info.name;
+    const row = (l, v) => `<div class="vl-cr-row"><dt>${l}</dt><dd>${v}</dd></div>`;
+    $("cr-sum-rows").innerHTML =
+      row(m === "vault" ? "Попытка" : "Мин. ставка", vld(stake))
+      + (m === "vault" ? row("Сейф", `<span class="num">${chipVal("cr-vault-sizes") || 0}</span> чисел · без срока`)
+        : row(m === "auction" ? "Раскрытие" : "Розыгрыш", `через <span class="num">${timeLbl(chipVal("cr-times") || 0)}</span>`))
+      + row("Создание", "бесплатно")
+      + row("Комиссия платформы", `<span class="num">${pct}%</span> банка`)
+      + `<div class="vl-cr-row vl-cr-row-you"><dt>Ты получишь</dt><dd><span class="num">${100 - pct}%</span> банка</dd></div>`;
+    $("cr-sum-ex").innerHTML = `Например, при банке <span class="num">1 000</span> VLD тебе придёт
+      <span class="num">${fmt(Math.floor(1000 * (100 - pct) / 100))}</span> VLD сразу после завершения.`;
+    $("cr-go").disabled = !g;
+  }
 
   async function createPool() {
     if (!state.create.gift) { toast("Сначала передай подарок боту-хранителю"); return; }
@@ -852,7 +950,7 @@
     else body.duration_min = chipVal("cr-times");
     try {
       const p = await api("/api/pools", body);
-      haptic("ok"); toast("Раунд создан ✨");
+      haptic("ok"); toast("Раунд создан");
       state.create.gift = null;
       openPool(p.id);
     } catch (e) { toast(e.message); haptic("error"); }
@@ -868,87 +966,141 @@
       const r = await api("/api/demo/gift", {});
       toast(`Демо: бот получил «${r.gift.name}»`);
       state.create.gift = r.gift.id;
-      if ($("sc-create").classList.contains("on")) loadCreate(); else renderInventory();
+      if ($("sc-create").classList.contains("on")) loadCreate(); else loadGifts().then(renderInventory);
     } catch (e) { toast(e.message); }
   }
 
   // ================================================================== ПРОФИЛЬ
+  // Разметка — templates/vloody.html (#sc-profile), стили — static/css/vl-screens.css.
+  // Десктоп: слева кошелёк + инвентарь (всегда виден, вкладка «Инвентарь» скрыта), справа вкладки
+  // Транзакции / Выводы / Каналы, рефералы и оформление. Телефон: одна колонка, все четыре вкладки.
+  const LEVELS = [[12, "Легенда"], [7, "Про"], [3, "Игрок"], [1, "Новичок"]];
+  const deskMq = window.matchMedia ? window.matchMedia("(min-width: 861px)") : null;
+  const isDesk = () => !!(deskMq && deskMq.matches);
+
   async function loadProfile(full) {
     try { state.profile = await api("/api/profile"); } catch (e) { toast(e.message); return; }
     const p = state.profile;
     setBalance(p.balance);
-    $("pf-av").textContent = p.avatar; $("pf-name").textContent = p.name;
+    $("pf-av").textContent = p.avatar; $("pf-name").textContent = p.name; $("pf-name").title = p.name;
     $("pf-handle").textContent = p.username ? "@" + p.username : "ID " + p.telegram_id;
-    $("pf-won").textContent = p.stats.nft_won; $("pf-part").textContent = p.stats.participations;
+    $("pf-won").textContent = fmt(p.stats.nft_won); $("pf-part").textContent = fmt(p.stats.participations);
     $("pf-wd").textContent = fmt(p.stats.withdrawn);
-    $("streak-count").textContent = p.streak;
+    $("streak-count").textContent = fmt(p.streak);
     $("streak-info").textContent = p.streak_today
-      ? "Сегодня стрик продлён — возвращайся завтра"
-      : "Сделай ставку сегодня, чтобы продлить стрик";
+      ? "Сегодня серия продлена — возвращайся завтра"
+      : "Сделай ставку сегодня, чтобы продлить серию";
     $("ref-rate").textContent = (p.referral.rate * 100) + "%";
     $("ref-link").textContent = `https://t.me/${VL.bot}?startapp=${p.referral.code}`;
-    $("ref-invited").textContent = p.referral.invited; $("ref-earned").textContent = fmt(p.referral.earned);
-    $("lvl-name").textContent = "Уровень " + p.level.level;
+    $("ref-invited").textContent = fmt(p.referral.invited); $("ref-earned").textContent = fmt(p.referral.earned);
+    const tier = (LEVELS.find(([from]) => p.level.level >= from) || LEVELS[3])[1];
+    $("lvl-name").textContent = `Уровень ${p.level.level} · ${tier}`;
     $("lvl-xp").textContent = `${fmt(p.level.xp)} / ${fmt(p.level.need)} XP`;
-    $("lvl-f").style.width = Math.min(100, p.level.xp / p.level.need * 100) + "%";
-    let cur = null;
-    document.querySelectorAll("#lvl-cards .lc").forEach((c) => { c.classList.remove("on"); if (p.level.level >= +c.dataset.from) cur = c; });
-    if (cur) cur.classList.add("on");
-    if (full) { await loadGifts(); renderInventory(); }
+    const pct = Math.max(0, Math.min(100, p.level.xp / (p.level.need || 1) * 100));
+    $("lvl-f").style.width = pct + "%";
+    $("lvl-bar").setAttribute("aria-valuenow", String(Math.round(pct)));
+    syncThemeSeg();
+    if (full) {
+      if (isDesk() && state.pt === "inv") switchPT("tx");
+      await loadGifts(); renderInventory();
+    }
   }
 
-  const GIFT_STATUS = { held: "В инвентаре", locked: "В активном раунде", withdraw_requested: "Ожидает выдачи" };
-  function renderInventory() {
-    const box = $("ptc-inv");
-    const tiles = state.gifts.map((g) => `
-      <div class="gift-tile ${esc(g.art)}">
-        ${g.source === "win" ? `<span class="gt-win">ВЫИГРАН</span>` : ""}
-        <span class="gt-em">${esc(g.emoji)}</span>
-        <div class="gt-n">${esc(g.name)}</div>
-        <div class="gt-s">${GIFT_STATUS[g.status] || ""}</div>
-        <button class="gt-btn" data-gift-wd="${g.id}" ${g.status === "held" ? "" : "disabled"}>
-          ${g.status === "withdraw_requested" ? "Заявка отправлена"
-            : (g.transfer_fee ? `Вывести · ${g.transfer_fee} VLD` : "Вывести в Telegram")}</button>
-      </div>`).join("");
-    box.innerHTML = (tiles ? `<div class="inv-grid">${tiles}</div>` : `<div class="inv-empty">Инвентарь пуст</div>`)
-      + `<button class="btn btn-dim rp" data-act="gift-deposit">📦 Внести подарок</button>`;
+  // статус подарка: текст + иконка состояния (+ модификатор цвета)
+  const GIFT_STATUS = { held: ["В инвентаре", "i-check", "ok"], locked: ["В раунде", "i-lock", "live"],
+    withdraw_requested: ["Ожидает выдачи", "i-clock", "wait"] };
+  function statusPill(st) {
+    return st ? `<span class="pill vl-st vl-st-${st[2]}">${icon(st[1])}${st[0]}</span>` : "";
   }
+  function renderInventory() {
+    const box = $("pf-inv-body");
+    const dep = `<button type="button" class="vl-btn vl-btn-ghost vl-btn-sm" data-act="gift-deposit">${VL.demo
+      ? icon("i-create") + "Получить демо-подарок" : icon("i-send") + "Внести подарок"}</button>`;
+    if (!state.gifts.length) {
+      box.innerHTML = emptyState("i-rounds", `Инвентарь пуст. Отправь NFT-подарок боту-хранителю @${esc(VL.relay)} — он появится здесь.`, dep);
+      return;
+    }
+    const tiles = state.gifts.map((g) => {
+      const held = g.status === "held", fee = +g.transfer_fee || 0;
+      const label = g.status === "withdraw_requested" ? `${icon("i-clock")}<span>Заявка отправлена</span>`
+        : `${icon("i-out")}<span>Вывести</span><span class="vl-inv-fee"><span class="num">${fmt(fee)}</span> VLD</span>`;
+      return `<li class="card vl-inv-tile">
+        <span class="vl-inv-pic">${giftImg(giftArt(g), "vl-inv-img")}</span>
+        <span class="vl-inv-n" title="${esc(g.name)}">${esc(g.name)}</span>
+        <span class="vl-inv-meta">${statusPill(GIFT_STATUS[g.status])}<span class="vl-inv-src">${g.source === "win" ? "выигран" : "внесён"}</span></span>
+        <button type="button" class="vl-btn vl-btn-sm vl-btn-block vl-btn-ghost vl-inv-wd" data-gift-wd="${g.id}"
+          ${held ? `title="${fee ? `Telegram берёт ${fee} VLD за передачу подарка` : "Передача бесплатна"}"` : "disabled"}>${label}</button>
+      </li>`;
+    }).join("");
+    box.innerHTML = `<ul class="vl-inv">${tiles}</ul><div class="vl-pf-more">${dep}</div>`;
+    VLFx.stagger(box.querySelector(".vl-inv"));
+  }
+
+  const TX_IC = { stake: "i-wheel", vault: "i-lock", bid: "i-eye-off", organizer_payout: "i-wallet", referral: "i-profile",
+    transfer_out: "i-send", transfer_in: "i-wallet", payout: "i-out", payout_refund: "i-back", deposit: "i-star",
+    gift_fee: "i-rounds", gift_fee_refund: "i-back" };
+  const listEmpty = (ic, text, action) => `<div class="vl-pf-listempty">${emptyState(ic, text, action)}</div>`;
 
   async function loadTx() {
     const box = $("ptc-tx");
     try {
       const { items } = await api("/api/transactions");
-      box.innerHTML = items.length ? items.map((t) => `
-        <div class="tx">
-          <div class="tx-ic">${TX_ICON[t.kind] || "•"}</div>
-          <div class="grow"><div class="tx-n">${esc(t.title)}</div><div class="tx-s">${ago(t.ts)}</div></div>
-          <div class="tx-r"><div class="tx-v ${t.amount >= 0 ? "pos" : "neg"}">${t.amount >= 0 ? "+" : "−"}${fmt(Math.abs(t.amount))}</div></div>
-        </div>`).join("") : `<div class="inv-empty">Операций пока нет</div>`;
-    } catch (e) { box.innerHTML = `<div class="inv-empty">${esc(e.message)}</div>`; }
+      box.innerHTML = items.length ? `<ul class="card vl-txl">${items.map((t) => `
+        <li class="vl-tx">
+          <span class="vl-tx-ic${t.amount >= 0 ? " is-pos" : ""}">${icon(TX_IC[t.kind] || "i-wallet")}</span>
+          <span class="vl-tx-id"><span class="vl-tx-n">${esc(t.title)}</span><span class="vl-tx-s">${ago(t.ts)}</span></span>
+          <span class="vl-tx-v num ${t.amount >= 0 ? "is-pos" : "is-neg"}">${t.amount >= 0 ? "+" : "−"}${fmt(Math.abs(t.amount))}</span>
+        </li>`).join("")}</ul>` : listEmpty("i-wallet", "Операций пока нет");
+    } catch (e) { box.innerHTML = listEmpty("i-close", esc(e.message)); }
   }
 
-  const PO_STATUS = { pending: "В обработке", paid: "Выплачено", rejected: "Отклонено · возврат" };
+  const PO_STATUS = { pending: ["В обработке", "i-clock", "wait"], paid: ["Выплачено", "i-check", "ok"],
+    rejected: ["Отклонено · возврат", "i-back", "bad"] };
   async function loadPayouts() {
     const box = $("ptc-wd");
+    const btn = `<button type="button" class="vl-btn vl-btn-primary vl-btn-sm" data-act="payout-open">${icon("i-out")}Запросить вывод</button>`;
     try {
       const { items } = await api("/api/payouts");
-      box.innerHTML = (items.length ? items.map((r) => `
-        <div class="tx">
-          <div class="tx-ic">⬇️</div>
-          <div class="grow"><div class="tx-n">${esc(r.destination.length > 20 ? shortAddr(r.destination) : r.destination)}</div><div class="tx-s">${PO_STATUS[r.status]} · ${ago(r.ts)}</div></div>
-          <div class="tx-r"><div class="tx-v">${r.method === "TON" ? r.net_ton.toFixed(2) + " TON" : fmt(r.net) + " ⭐"}</div><div class="tx-d">списано ${fmt(r.amount)} VLD</div></div>
-        </div>`).join("") : `<div class="inv-empty">Заявок на вывод нет</div>`)
-        + `<button class="btn btn-v rp" data-act="payout-open">Запросить вывод</button>`;
-    } catch (e) { box.innerHTML = `<div class="inv-empty">${esc(e.message)}</div>`; }
+      box.innerHTML = items.length ? `<ul class="card vl-txl">${items.map((r) => `
+        <li class="vl-tx">
+          <span class="vl-tx-ic">${icon(r.method === "TON" ? "i-ton" : "i-star")}</span>
+          <span class="vl-tx-id">
+            <span class="vl-tx-n num">${esc(r.destination.length > 20 ? shortAddr(r.destination) : r.destination)}</span>
+            <span class="vl-tx-s">${statusPill(PO_STATUS[r.status])} ${ago(r.ts)}</span>
+          </span>
+          <span class="vl-tx-r"><span class="vl-tx-v num">${r.method === "TON" ? r.net_ton.toFixed(2) + " TON" : fmt(r.net) + " Stars"}</span>
+            <span class="vl-tx-s">списано <span class="num">${fmt(r.amount)}</span> VLD</span></span>
+        </li>`).join("")}</ul><div class="vl-pf-more">${btn}</div>` : listEmpty("i-out", "Заявок на вывод нет", btn);
+    } catch (e) { box.innerHTML = listEmpty("i-close", esc(e.message)); }
   }
 
   function switchPT(t) {
-    document.querySelectorAll("#ptabs .ptab").forEach((b) => b.classList.toggle("on", b.dataset.pt === t));
-    document.querySelectorAll(".ptc").forEach((c) => c.classList.toggle("on", c.id === "ptc-" + t));
+    state.pt = t;
+    document.querySelectorAll("#ptabs [data-pt]").forEach((b) => {
+      const on = b.dataset.pt === t;
+      b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on));
+    });
+    document.querySelectorAll("#sc-profile .vl-pf-panel").forEach((c) => c.classList.toggle("on", c.id === "ptc-" + t));
     if (t === "tx") loadTx();
     if (t === "wd") loadPayouts();
     if (t === "inv") loadGifts().then(renderInventory);
   }
+  // на десктопе инвентарь всегда слева: если открыта вкладка «Инвентарь», справа показываем транзакции
+  if (deskMq) {
+    const onDesk = () => { if (isDesk() && state.pt === "inv" && $("sc-profile").classList.contains("on")) switchPT("tx"); };
+    if (deskMq.addEventListener) deskMq.addEventListener("change", onDesk); else if (deskMq.addListener) deskMq.addListener(onDesk);
+  }
+
+  // переключатель темы в «Оформлении»: VLTheme.set, состояние кнопок — по событию vl:theme
+  function syncThemeSeg() {
+    const cur = window.VLTheme ? window.VLTheme.get() : "dark";
+    document.querySelectorAll("[data-theme-set]").forEach((b) => {
+      const on = b.dataset.themeSet === cur;
+      b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on));
+    });
+  }
+  document.addEventListener("vl:theme", syncThemeSeg);
+  syncThemeSeg();
 
   // ---------------------------------------------------------------- TON Connect
   let tcUI = null, tonAddr = null;
@@ -1265,18 +1417,23 @@
     }
     if ((el = t("[data-lb]"))) {
       state.lb = el.dataset.lb;
-      document.querySelectorAll("#lb-tabs .mtab").forEach((b) => b.classList.toggle("on", b === el));
+      document.querySelectorAll("#lb-tabs [data-lb]").forEach((b) => {
+        b.classList.toggle("on", b === el); b.setAttribute("aria-pressed", String(b === el));
+      });
       return loadEvents();
     }
     if ((el = t("[data-cmode]"))) { state.create.mode = el.dataset.cmode; return renderCreateMode(); }
-    if ((el = t("[data-gift]"))) { state.create.gift = +el.dataset.gift; return loadCreate(); }
+    if ((el = t("[data-gift]"))) { state.create.gift = +el.dataset.gift; renderCreateGifts(); return renderCreateSummary(); }
     if ((el = t("[data-gift-wd]"))) return giftWithdraw(+el.dataset.giftWd);
     if ((el = t("[data-pt]"))) return switchPT(el.dataset.pt);
     if ((el = t("[data-num]"))) { $("vt-num").value = el.dataset.num; return vaultPick(); }
-    if ((el = t(".chips .chip"))) {
-      el.parentElement.querySelectorAll(".chip").forEach((c) => c.classList.remove("on"));
-      return el.classList.add("on");
+    if ((el = t(".vl-cr-chips .vl-chip"))) {
+      el.parentElement.querySelectorAll(".vl-chip").forEach((c) => {
+        c.classList.toggle("is-on", c === el); c.setAttribute("aria-pressed", String(c === el));
+      });
+      return renderCreateSummary();
     }
+    if ((el = t("[data-theme-set]"))) { if (window.VLTheme) window.VLTheme.set(el.dataset.themeSet); return syncThemeSeg(); }
     if ((el = t("[data-tum]"))) return topupMode(el.dataset.tum);
     if ((el = t("[data-pom]"))) return payoutMode(el.dataset.pom);
     if ((el = t("[data-copy]"))) return copyText($(el.dataset.copy).textContent, "Скопировано!");

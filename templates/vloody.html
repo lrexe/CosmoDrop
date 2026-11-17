@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/vl-shell.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/vl-cards.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/vl-rounds.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/vl-screens.css') }}">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="{{ url_for('static', filename='js/vl-theme.js') }}"></script>
 <script src="https://unpkg.com/@tonconnect/ui@2/dist/tonconnect-ui.min.js" onerror="window.TON_CONNECT_FAILED=true"></script>
@@ -314,144 +315,200 @@
       </div>
     </div>
 
-    <!-- ══ ИВЕНТЫ ══ -->
-    <div class="scr" id="sc-events">
-      <div class="sh"><div class="sh-t">🏆 Лидеры</div></div>
-      <div class="mtabs" id="lb-tabs">
-        <button class="mtab rp" data-lb="day">День</button>
-        <button class="mtab rp" data-lb="week">Неделя</button>
-        <button class="mtab on rp" data-lb="month">Месяц</button>
-        <button class="mtab rp" data-lb="all">Всё время</button>
-      </div>
-      <div class="lb-banner" id="lb-banner"></div>
-      <div class="podium" id="lb-podium"></div>
-      <div id="lb-list"></div>
-      <div class="sh"><div class="sh-t">📜 Последние победители</div></div>
-      <div class="pad" id="winners-list"></div>
-    </div>
-
-    <!-- ══ СОЗДАТЬ ══ -->
-    <div class="scr" id="sc-create">
-      <div class="sh"><div class="sh-t">✨ Новый розыгрыш</div></div>
-      <div class="cs">
-        <div class="cs-step">1</div>
-        <div class="cs-t">Выбери подарок</div>
-        <div class="cs-s">Раунд создаётся только из подарка, который уже лежит у бота-хранителя <b>@{{ RELAY_USERNAME }}</b>. Так участники защищены: приз существует и уйдёт победителю автоматически.</div>
-        <div class="m-gifts-grid" id="cr-gifts"></div>
-        <button class="btn btn-dim rp" data-act="gift-deposit">📦 Передать подарок боту</button>
-      </div>
-      <div class="cs">
-        <div class="cs-step">2</div>
-        <div class="cs-t">Режим розыгрыша</div>
-        <div class="mtabs flush" id="cr-modes">
-          <button class="mtab on rp" data-cmode="wheel">🎡 Колесо</button>
-          <button class="mtab rp" data-cmode="vault">🔒 Сейф</button>
-          <button class="mtab rp" data-cmode="auction">🕶 Аукцион</button>
-        </div>
-        <div class="cs-s" id="cr-mode-hint"></div>
-      </div>
-      <div class="cs">
-        <div class="cs-step">3</div>
-        <div class="cs-t">Настройки</div>
-        <div class="cs-lbl" id="cr-stake-lbl">Мин. ставка</div>
-        <div class="chips" id="cr-stakes"></div>
-        <div id="cr-vault-box" class="hid">
-          <div class="cs-lbl">Размер сейфа (сколько чисел)</div>
-          <div class="chips" id="cr-vault-sizes">
-            <div class="chip rp" data-v="25">25</div><div class="chip rp" data-v="50">50</div>
-            <div class="chip on rp" data-v="100">100</div><div class="chip rp" data-v="125">125</div>
+    <!-- ══ ЛИДЕРЫ ══ (стили: static/css/vl-screens.css, рендер: loadEvents в vloody.js) -->
+    <div class="scr vl-redone vl-scr" id="sc-events">
+      <div class="vl-ev">
+        <div class="vl-ev-main">
+          <div class="vl-seg vl-seg-wide" id="lb-tabs" role="group" aria-label="Период рейтинга">
+            <button type="button" class="vl-seg-btn" data-lb="day" aria-pressed="false">День</button>
+            <button type="button" class="vl-seg-btn" data-lb="week" aria-pressed="false">Неделя</button>
+            <button type="button" class="vl-seg-btn on" data-lb="month" aria-pressed="true">Месяц</button>
+            <button type="button" class="vl-seg-btn" data-lb="all" aria-pressed="false">Всё время</button>
           </div>
-          <div class="cs-s">Секретное число выбирает сервер и не знает никто, даже ты. Его хеш публикуется сразу, само число — после вскрытия.</div>
+          <div class="card vl-ev-me" id="lb-banner" aria-live="polite"><span class="skeleton vl-sk-line" style="width:60%"></span></div>
+          <ol class="vl-pod" id="lb-podium" aria-label="Тройка лидеров"></ol>
+          <ol class="vl-lb" id="lb-list" aria-label="Рейтинг по обороту ставок"></ol>
         </div>
-        <div id="cr-time-box">
-          <div class="cs-lbl">Окончание</div>
-          <div class="chips" id="cr-times">
-            <div class="chip on rp" data-v="15">15 мин</div><div class="chip rp" data-v="30">30 мин</div>
-            <div class="chip rp" data-v="60">1 ч</div><div class="chip rp" data-v="360">6 ч</div>
-            <div class="chip rp" data-v="720">12 ч</div><div class="chip rp" data-v="1440">24 ч</div>
-          </div>
-        </div>
-      </div>
-      <div class="cs">
-        <div class="cs-step">4</div>
-        <div class="cs-t">Условия</div>
-        <div class="det-grid two">
-          <div class="dg"><span class="dg-v">Бесплатно</span><span class="dg-l">Создание</span></div>
-          <div class="dg"><span class="dg-v">{{ COMMISSION_PCT }}%</span><span class="dg-l">Комиссия</span></div>
-        </div>
-        <div class="cs-s">Ты получаешь <b>{{ 100 - COMMISSION_PCT }}%</b> от всех ставок сразу после завершения. Если ставок не будет — подарок вернётся в инвентарь.</div>
-        <button class="btn btn-v rp" data-act="pool-create">✨ Создать розыгрыш</button>
+        <aside class="vl-ev-side" aria-labelledby="ev-win-h">
+          <h2 class="vl-sc-h" id="ev-win-h">Последние победители</h2>
+          <ol class="vl-wf-list" id="winners-list"></ol>
+        </aside>
       </div>
     </div>
 
-    <!-- ══ ПРОФИЛЬ ══ -->
-    <div class="scr" id="sc-profile">
-      <div class="prof-hero">
-        <div class="prof-av" id="pf-av">🦊</div>
-        <div class="prof-name" id="pf-name">—</div>
-        <div class="prof-handle" id="pf-handle"></div>
-      </div>
-      <div class="prof-stats">
-        <div class="ps"><span class="ps-v" id="pf-won">0</span><span class="ps-l">НФТ выиграно</span></div>
-        <div class="ps"><span class="ps-v" id="pf-part">0</span><span class="ps-l">Участий</span></div>
-        <div class="ps"><span class="ps-v" id="pf-wd">0</span><span class="ps-l">Выведено</span></div>
-      </div>
-      <div class="calc-box streak-box">
-        <div class="streak-row">
-          <div class="streak-fire">🔥</div>
-          <div><div class="streak-n" id="streak-count">0</div><div class="streak-l">дней подряд</div></div>
+    <!-- ══ СОЗДАТЬ ══ (стили: static/css/vl-screens.css, рендер: loadCreate / renderCreateMode / renderCreateSummary) -->
+    <div class="scr vl-redone vl-scr" id="sc-create">
+      <div class="vl-cr">
+        <div class="vl-cr-steps">
+          <section class="card vl-cr-step" aria-labelledby="cr-h1">
+            <header class="vl-cr-sh">
+              <span class="vl-cr-n num" aria-hidden="true">1</span>
+              <div class="vl-cr-sh-t">
+                <h2 class="vl-cr-t" id="cr-h1">Подарок</h2>
+                <p class="vl-cr-s">Раунд создаётся только из подарка, который уже лежит у бота-хранителя <b>@{{ RELAY_USERNAME }}</b>: приз существует и уйдёт победителю автоматически.</p>
+              </div>
+            </header>
+            <div class="vl-cr-gifts" id="cr-gifts" role="group" aria-label="Подарок для раунда">
+              {% for i in range(3) %}<span class="skeleton vl-cr-gift-sk" aria-hidden="true"></span>{% endfor %}
+            </div>
+            <button type="button" class="vl-btn vl-btn-ghost vl-btn-sm vl-cr-dep" id="cr-deposit" data-act="gift-deposit">
+              {% if DEMO_MODE %}<svg class="ic" aria-hidden="true"><use href="#i-create"/></svg>Получить демо-подарок{% else %}<svg class="ic" aria-hidden="true"><use href="#i-send"/></svg>Передать ещё подарок{% endif %}
+            </button>
+          </section>
+
+          <section class="card vl-cr-step" aria-labelledby="cr-h2">
+            <header class="vl-cr-sh">
+              <span class="vl-cr-n num" aria-hidden="true">2</span>
+              <div class="vl-cr-sh-t"><h2 class="vl-cr-t" id="cr-h2">Режим</h2></div>
+            </header>
+            <div class="vl-cr-modes" id="cr-modes" role="group" aria-label="Режим розыгрыша">
+              <button type="button" class="vl-cr-mode is-on" data-cmode="wheel" aria-pressed="true"><svg class="ic" aria-hidden="true"><use href="#i-wheel"/></svg>Колесо</button>
+              <button type="button" class="vl-cr-mode" data-cmode="vault" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg>Сейф</button>
+              <button type="button" class="vl-cr-mode" data-cmode="auction" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-eye-off"/></svg>Аукцион</button>
+            </div>
+            <p class="vl-cr-hint" id="cr-mode-hint" aria-live="polite"></p>
+          </section>
+
+          <section class="card vl-cr-step" aria-labelledby="cr-h3">
+            <header class="vl-cr-sh">
+              <span class="vl-cr-n num" aria-hidden="true">3</span>
+              <div class="vl-cr-sh-t"><h2 class="vl-cr-t" id="cr-h3">Настройки</h2></div>
+            </header>
+            <div class="vl-cr-field">
+              <div class="vl-cr-lbl" id="cr-stake-lbl">Мин. ставка</div>
+              <div class="vl-cr-chips" id="cr-stakes" role="group" aria-labelledby="cr-stake-lbl"></div>
+            </div>
+            <div class="vl-cr-field hid" id="cr-vault-box">
+              <div class="vl-cr-lbl" id="cr-vault-lbl">Размер сейфа · сколько чисел</div>
+              <div class="vl-cr-chips" id="cr-vault-sizes" role="group" aria-labelledby="cr-vault-lbl">
+                <button type="button" class="vl-chip num" data-v="25" aria-pressed="false">25</button>
+                <button type="button" class="vl-chip num" data-v="50" aria-pressed="false">50</button>
+                <button type="button" class="vl-chip num is-on" data-v="100" aria-pressed="true">100</button>
+                <button type="button" class="vl-chip num" data-v="125" aria-pressed="false">125</button>
+              </div>
+              <p class="vl-cr-hint">Секретное число выбирает сервер, его не знает никто, даже ты. Хеш публикуется сразу, само число — после вскрытия.</p>
+            </div>
+            <div class="vl-cr-field" id="cr-time-box">
+              <div class="vl-cr-lbl" id="cr-time-lbl">Окончание</div>
+              <div class="vl-cr-chips" id="cr-times" role="group" aria-labelledby="cr-time-lbl">
+                <button type="button" class="vl-chip is-on" data-v="15" aria-pressed="true">15 мин</button>
+                <button type="button" class="vl-chip" data-v="30" aria-pressed="false">30 мин</button>
+                <button type="button" class="vl-chip" data-v="60" aria-pressed="false">1 ч</button>
+                <button type="button" class="vl-chip" data-v="360" aria-pressed="false">6 ч</button>
+                <button type="button" class="vl-chip" data-v="720" aria-pressed="false">12 ч</button>
+                <button type="button" class="vl-chip" data-v="1440" aria-pressed="false">24 ч</button>
+              </div>
+            </div>
+          </section>
         </div>
-        <div class="streak-info" id="streak-info"></div>
+
+        <!-- шаг 4: на телефоне — последний блок, на десктопе — липкая сводка справа -->
+        <aside class="card vl-cr-sum" aria-labelledby="cr-h4">
+          <header class="vl-cr-sh">
+            <span class="vl-cr-n num" aria-hidden="true">4</span>
+            <div class="vl-cr-sh-t"><h2 class="vl-cr-t" id="cr-h4">Условия и запуск</h2></div>
+          </header>
+          <div class="vl-cr-sum-hero">
+            <div class="vl-cr-sum-gift" id="cr-sum-gift"></div>
+            <div class="vl-cr-sum-id">
+              <div class="vl-cr-sum-name" id="cr-sum-name">Подарок не выбран</div>
+              <span class="pill vl-cr-sum-mode" id="cr-sum-mode"></span>
+            </div>
+          </div>
+          <dl class="vl-cr-rows" id="cr-sum-rows"></dl>
+          <p class="vl-cr-example" id="cr-sum-ex"></p>
+          <p class="vl-cr-fair"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><span>Хеш результата публикуется при создании, проверить его может любой. Если ставок не будет — подарок вернётся в инвентарь.</span></p>
+          <button type="button" class="vl-btn vl-btn-primary vl-btn-block" id="cr-go" data-act="pool-create"><svg class="ic" aria-hidden="true"><use href="#i-create"/></svg>Создать раунд</button>
+        </aside>
       </div>
-      <div class="wallet">
-        <div class="w-lbl">Баланс</div>
-        <div class="w-bal big"><span class="star-i"></span> <span id="pf-bal">0</span> <small>VLD</small></div>
-        <div class="w-addr" id="pf-ton">TON-кошелёк не подключён</div>
-        <div class="w-btns">
-          <button class="w-btn rp" data-act="topup">Пополнить</button>
-          <button class="w-btn rp" data-act="transfer-open">Перевести</button>
-          <button class="w-btn rp" data-act="payout-open">Вывести</button>
+    </div>
+
+    <!-- ══ ПРОФИЛЬ ══ (стили: static/css/vl-screens.css, рендер: loadProfile / renderInventory / loadTx / loadPayouts) -->
+    <div class="scr vl-redone vl-scr" id="sc-profile">
+      <div class="vl-pf">
+        <header class="card vl-pf-head">
+          <span class="vl-pf-av" id="pf-av" aria-hidden="true"></span>
+          <div class="vl-pf-id">
+            <h2 class="vl-pf-name" id="pf-name">—</h2>
+            <div class="vl-pf-handle" id="pf-handle"></div>
+          </div>
+          <div class="vl-pf-lvl">
+            <div class="vl-pf-lvl-row"><span id="lvl-name">Уровень 1</span><b class="num" id="lvl-xp">0 / 100 XP</b></div>
+            <div class="vl-pf-lvl-bar" role="progressbar" aria-labelledby="lvl-name" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="lvl-bar"><i id="lvl-f"></i></div>
+          </div>
+        </header>
+
+        <dl class="vl-pf-stats">
+          <div class="vl-pf-stat"><dt>Выиграно NFT</dt><dd class="num" id="pf-won">0</dd></div>
+          <div class="vl-pf-stat"><dt>Участий</dt><dd class="num" id="pf-part">0</dd></div>
+          <div class="vl-pf-stat"><dt>Выведено, VLD</dt><dd class="num" id="pf-wd">0</dd></div>
+          <div class="vl-pf-stat vl-pf-streak">
+            <dt>Серия дней</dt>
+            <dd><svg class="ic" aria-hidden="true"><use href="#i-flame"/></svg><span class="num" id="streak-count">0</span></dd>
+            <dd class="vl-pf-streak-s" id="streak-info"></dd>
+          </div>
+        </dl>
+
+        <div class="vl-pf-cols">
+          <div class="vl-pf-col">
+            <section class="card vl-pf-wallet" aria-labelledby="pf-wal-h">
+              <h2 class="vl-pf-kick" id="pf-wal-h"><svg class="ic" aria-hidden="true"><use href="#i-wallet"/></svg>Баланс</h2>
+              <div class="vl-pf-bal"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg><span class="num" id="pf-bal">0</span><span class="vl-pf-bal-u">VLD</span></div>
+              <div class="vl-pf-ton"><svg class="ic" aria-hidden="true"><use href="#i-ton"/></svg><span id="pf-ton">TON-кошелёк не подключён</span></div>
+              <div class="vl-pf-acts">
+                <button type="button" class="vl-pf-act is-main" data-act="topup"><span class="vl-pf-act-ic"><svg class="ic" aria-hidden="true"><use href="#i-create"/></svg></span>Пополнить</button>
+                <button type="button" class="vl-pf-act" data-act="transfer-open"><span class="vl-pf-act-ic"><svg class="ic" aria-hidden="true"><use href="#i-send"/></svg></span>Перевести</button>
+                <button type="button" class="vl-pf-act" data-act="payout-open"><span class="vl-pf-act-ic"><svg class="ic" aria-hidden="true"><use href="#i-out"/></svg></span>Вывести</button>
+              </div>
+            </section>
+            <section class="vl-pf-panel vl-pf-inv on" id="ptc-inv" aria-labelledby="pf-inv-h">
+              <h2 class="vl-sc-h vl-pf-inv-h" id="pf-inv-h">Инвентарь</h2>
+              <div id="pf-inv-body"></div>
+            </section>
+          </div>
+
+          <div class="vl-pf-col">
+            <div class="vl-seg vl-seg-wide vl-pf-tabs" id="ptabs" role="group" aria-label="Разделы профиля">
+              <button type="button" class="vl-seg-btn on vl-pf-tab-inv" data-pt="inv" aria-pressed="true">Инвентарь</button>
+              <button type="button" class="vl-seg-btn" data-pt="tx" aria-pressed="false">Транзакции</button>
+              <button type="button" class="vl-seg-btn" data-pt="wd" aria-pressed="false">Выводы</button>
+              <button type="button" class="vl-seg-btn" data-pt="ch" aria-pressed="false">Каналы</button>
+            </div>
+            <section class="vl-pf-panel" id="ptc-tx" aria-label="Транзакции"></section>
+            <section class="vl-pf-panel" id="ptc-wd" aria-label="Выводы"></section>
+            <section class="vl-pf-panel" id="ptc-ch" aria-label="Каналы">
+              <div class="card vl-pf-note">
+                <div class="vl-pf-note-t">Привязать канал</div>
+                <p class="vl-pf-note-s">Розыгрыши для подписчиков твоего канала — в разработке. Привязанных каналов пока нет.</p>
+              </div>
+            </section>
+
+            <section class="card vl-pf-ref" aria-labelledby="pf-ref-h">
+              <h2 class="vl-pf-kick" id="pf-ref-h"><svg class="ic" aria-hidden="true"><use href="#i-share"/></svg>Рефералы</h2>
+              <p class="vl-pf-ref-s">Приглашай друзей и получай <b id="ref-rate">1%</b> с их ставок. Выплачивается из комиссии платформы.</p>
+              <div class="vl-pf-ref-link">
+                <span class="num" id="ref-link">—</span>
+                <button type="button" class="vl-btn vl-btn-ghost vl-btn-sm vl-btn-icon" data-act="ref-copy" aria-label="Скопировать ссылку" title="Скопировать"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg></button>
+              </div>
+              <dl class="vl-pf-ref-stats">
+                <div><dt>Приглашено</dt><dd class="num" id="ref-invited">0</dd></div>
+                <div><dt>Заработано, VLD</dt><dd class="num" id="ref-earned">0</dd></div>
+              </dl>
+              <button type="button" class="vl-btn vl-btn-ghost vl-btn-sm vl-btn-block" data-act="ref-share"><svg class="ic" aria-hidden="true"><use href="#i-share"/></svg>Поделиться ссылкой</button>
+            </section>
+
+            <section class="card vl-pf-set" aria-labelledby="pf-set-h">
+              <h2 class="vl-pf-kick" id="pf-set-h">Оформление</h2>
+              <div class="vl-pf-set-row">
+                <span class="vl-pf-set-l" id="pf-theme-l">Тема</span>
+                <div class="vl-seg" role="group" aria-labelledby="pf-theme-l">
+                  <button type="button" class="vl-seg-btn" data-theme-set="dark" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg>Тёмная</button>
+                  <button type="button" class="vl-seg-btn" data-theme-set="light" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-sun"/></svg>Светлая</button>
+                </div>
+              </div>
+            </section>
+          </div>
         </div>
-      </div>
-      <div class="ptabs" id="ptabs">
-        <button class="ptab on" data-pt="inv">Инвентарь</button>
-        <button class="ptab" data-pt="tx">Транзакции</button>
-        <button class="ptab" data-pt="wd">Выводы</button>
-        <button class="ptab" data-pt="ch">Каналы</button>
-      </div>
-      <div class="ptc on" id="ptc-inv"></div>
-      <div class="ptc" id="ptc-tx"></div>
-      <div class="ptc" id="ptc-wd"></div>
-      <div class="ptc" id="ptc-ch">
-        <div class="ch-bind">
-          <div class="ch-t">Привязать канал</div>
-          <div class="ch-s">Розыгрыши для подписчиков твоего канала — в разработке.</div>
-        </div>
-        <div class="ch-empty">Нет привязанных каналов</div>
-      </div>
-      <div class="gap"></div>
-      <div class="ref-card">
-        <div class="ref-t">Рефералы</div>
-        <div class="ref-s">Приглашай друзей — получай <b id="ref-rate">1%</b> с их ставок пассивно. Выплачивается из комиссии платформы.</div>
-        <div class="ref-link" id="ref-link">—</div>
-        <div class="ref-btns">
-          <button class="ref-btn rp" data-act="ref-copy">📋 Скопировать</button>
-          <button class="ref-btn s rp" data-act="ref-share">↗ Поделиться</button>
-        </div>
-      </div>
-      <div class="ref-stats">
-        <div class="rst"><div class="rsv" id="ref-invited">0</div><div class="rsl">Приглашено</div></div>
-        <div class="rst"><div class="rsv"><span class="star-i"></span> <span id="ref-earned">0</span></div><div class="rsl">Заработано</div></div>
-      </div>
-      <div class="lvl">
-        <div class="lvl-hdr"><span id="lvl-name">Уровень 1</span><b id="lvl-xp">0 / 100 XP</b></div>
-        <div class="lvl-bar"><div class="lvl-f" id="lvl-f" style="width:0%"></div></div>
-      </div>
-      <div class="lvl-cards" id="lvl-cards">
-        <div class="lc" data-from="1"><span class="lc-em">🌱</span><div class="lc-n">Новичок</div></div>
-        <div class="lc" data-from="3"><span class="lc-em">🔥</span><div class="lc-n">Игрок</div></div>
-        <div class="lc" data-from="7"><span class="lc-em">💎</span><div class="lc-n">Про</div></div>
-        <div class="lc" data-from="12"><span class="lc-em">👑</span><div class="lc-n">Легенда</div></div>
       </div>
     </div>
   </div><!-- /screens -->
