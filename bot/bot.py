@@ -5,7 +5,9 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import FSInputFile
 
-API_TOKEN = "8257651978:AAF8TuahPlmCMPdn6FdLCNCSiG5AQfS93Cw"
+API_TOKEN = os.getenv("BOT_TOKEN")
+if not API_TOKEN:
+    raise SystemExit("Задайте переменную окружения BOT_TOKEN (токен от @BotFather)")
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
@@ -16,11 +18,11 @@ PHOTO_PATH = "static/img/photo_2025-12-16_21-02-55.jpg"
 photo = FSInputFile(PHOTO_PATH)
 # https://c58b27bbba4d.ngrok-free.app
 WELCOME_TEXT = """
-🎁 Добро пожаловать в CosmosDrop!
+🎁 Добро пожаловать в Vloody!
 
-Открывай кейсы за звёзды и получай улучшенные подарки.
+Честные розыгрыши NFT-подарков между игроками.
 
-В наших кейсах всегда лежат утешительные призы, которые ты можешь продать или вывести к себе на аккаунт.
+Разыгрывай свои подарки или участвуй в чужих раундах: колесо, кибер-сейф и слепой аукцион.
 
 🚀 Готов испытать удачу? Запускай мини-приложение и начинай выигрывать уже сейчас!
 """

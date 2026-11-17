@@ -6,18 +6,20 @@ CosmoDrop — REST API.
 """
 
 import hashlib
+import os
 import random
 from datetime import datetime, timedelta
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, has_request_context
 from models import db, User, Case, CasePrize, InventoryItem, CaseHistory, gift_image
 from bot.engine import (
     award_xp, bump_daily, gen_referral_code, level_info, RARITY_RANK,
 )
+from bot.auth import current_identity, clean_text, clean_photo_url, DEMO_MODE
 
 cases_bp = Blueprint("cases_api", __name__)
 
-FAIR_SECRET = "cosmo-drop-fair-v1"
+FAIR_SECRET = os.getenv("FAIR_SECRET", "cosmo-drop-fair-v1")
 
 DAILY_COOLDOWN = timedelta(hours=24)
 DAILY_STREAK_WINDOW = timedelta(hours=48)
@@ -31,7 +33,22 @@ DAILY_MAX = 300
 # ----------------------------------------------------------------------------
 
 def get_or_create_user(telegram_id, username=None, first_name=None, photo_url=None):
-    """Находит пользователя по telegram_id, создавая его при первом заходе."""
+    """Возвращает пользователя ТЕКУЩЕГО запроса, создавая его при первом заходе.
+
+    Внутри HTTP-запроса переданные аргументы игнорируются: личность берётся из
+    проверенного Telegram initData (или демо-пользователь в демо-режиме), поэтому
+    подставить чужой telegram_id в запрос нельзя. Аргументы используются только
+    вне запроса (скрипты, seed).
+    """
+    if has_request_context():
+        ident = current_identity()
+        if ident is None:
+            return None
+        telegram_id = ident["telegram_id"]
+        username, first_name, photo_url = (
+            ident["username"], ident["first_name"], ident["photo_url"])
+    username, first_name = clean_text(username), clean_text(first_name)
+    photo_url = clean_photo_url(photo_url)
     if telegram_id is None:
         return None
     try:
@@ -416,6 +433,8 @@ def daily_bonus_status():
 @cases_bp.route("/api/balance/add", methods=["POST"])
 def add_balance():
     data = request.get_json(silent=True) or {}
+    if not DEMO_MODE:
+        return err("Пополнение доступно только через оплату Telegram Stars", 403)
     user = get_or_create_user(data.get("telegram_id"))
     if not user:
         return err("User not found", 404)

@@ -38,6 +38,8 @@
   // ---- API ----------------------------------------------------------------
   async function api(path, { method = "GET", body = null } = {}) {
     const opts = { method, headers: { "Content-Type": "application/json" } };
+    // подписанные данные Telegram — по ним сервер определяет, кто делает запрос
+    if (tg && tg.initData) opts.headers["X-Telegram-Init-Data"] = tg.initData;
     if (body) opts.body = JSON.stringify(body);
     const res = await fetch(path, opts);
     let data = null;
@@ -79,6 +81,17 @@
     redeemPromo: (code) => api("/api/promo/redeem", { method: "POST", body: withId({ code }) }),
     referral: () => api(`/api/referral?telegram_id=${identity.telegram_id}`),
     applyReferral: (code) => api("/api/referral/apply", { method: "POST", body: withId({ code }) }),
+    // --- аркада ---
+    crashStart: (bet, auto) => api("/api/crash/start", { method: "POST", body: withId({ bet, auto_cashout: auto }) }),
+    crashTick: (roundId) => api(`/api/crash/tick?telegram_id=${identity.telegram_id}&round_id=${roundId}`),
+    crashCashout: (roundId) => api("/api/crash/cashout", { method: "POST", body: withId({ round_id: roundId }) }),
+    minesState: () => api(`/api/mines/state?telegram_id=${identity.telegram_id}`),
+    minesStart: (bet, mines) => api("/api/mines/start", { method: "POST", body: withId({ bet, mines }) }),
+    minesReveal: (cell) => api("/api/mines/reveal", { method: "POST", body: withId({ cell }) }),
+    minesCashout: () => api("/api/mines/cashout", { method: "POST", body: withId() }),
+    dice: (bet, chance) => api("/api/dice", { method: "POST", body: withId({ bet, chance }) }),
+    arcadeHistory: (game, limit = 8, scope = "me") =>
+      api(`/api/arcade/history?scope=${scope}&limit=${limit}&telegram_id=${identity.telegram_id}${game ? "&game=" + game : ""}`),
   };
 
   // ---- состояние пользователя --------------------------------------------

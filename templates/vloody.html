@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0A0A0C">
+<title>Vloody</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/vloody.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/vloody-app.css') }}">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://unpkg.com/@tonconnect/ui@2/dist/tonconnect-ui.min.js" onerror="window.TON_CONNECT_FAILED=true"></script>
+<script>
+  window.VL = { demo: {{ 'true' if DEMO_MODE else 'false' }}, bot: "{{ BOT_USERNAME }}", relay: "{{ RELAY_USERNAME }}", commission: {{ COMMISSION_PCT }} };
+</script>
+</head>
+<body>
+{% if DEMO_MODE %}<div class="demo-banner">ДЕМО-РЕЖИМ · VLD и подарки не настоящие</div>{% endif %}
+
+<!-- SPLASH -->
+<div id="splash">
+  <div class="sp-orb"></div>
+  <div class="sp-content">
+    <div class="sp-drips"><span class="drip"></span><span class="drip"></span><span class="drip"></span><span class="drip"></span><span class="drip"></span></div>
+    <div class="sp-wordmark">VLOODY</div>
+    <div class="sp-tagline">Честные розыгрыши · Provably Fair</div>
+    <div class="sp-track"><div class="sp-fill"></div></div>
+  </div>
+</div>
+
+<div id="loader"><div class="ld-gem">💎</div><div class="ld-txt">Загрузка...</div></div>
+
+<div id="app">
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="tb-logo"><em>Vloody</em></div>
+    <div class="tb-pill rp" data-act="ton-connect">
+      <svg width="14" height="14" viewBox="0 0 100 100"><polygon points="50,5 95,30 95,70 50,95 5,70 5,30" fill="none" stroke="#0098EA" stroke-width="8"/><polygon points="50,28 72,40 50,78 28,40" fill="#0098EA"/></svg>
+      <span id="tb-ton-text">Подключить</span>
+    </div>
+    <div class="tb-pill rp" data-act="topup">
+      <span class="star-i"></span><span id="tb-stars-val">0</span>
+    </div>
+  </div>
+
+  <!-- LIVE BAR -->
+  <div class="livebar">
+    <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+    <div id="live-items" class="live-items"></div>
+  </div>
+
+  <div id="screens">
+    <!-- ══ ГЛАВНАЯ ══ -->
+    <div class="scr on" id="sc-home">
+      <div class="filters" id="filters">
+        <button class="ft on rp" data-flt="all">Все</button>
+        <button class="ft rp" data-flt="hot">🔥 Горячие</button>
+        <button class="ft rp" data-flt="new">🆕 Новые</button>
+        <button class="ft rp" data-flt="soon">⏳ Скоро</button>
+        <button class="ft rp" data-flt="wheel">🎡 Колесо</button>
+        <button class="ft rp" data-flt="vault">🔒 Сейф</button>
+        <button class="ft rp" data-flt="auction">🕶 Аукцион</button>
+      </div>
+      <div id="pools-list"></div>
+      <div class="sh"><div class="sh-t">📜 Завершённые</div></div>
+      <div id="pools-finished"></div>
+    </div>
+
+    <!-- ══ КОЛЕСО ══ -->
+    <div class="scr" id="sc-wheel">
+      <div class="det-hero a1" id="det-hero">
+        <div class="det-glow"></div><div class="det-bg-pattern"></div>
+        <span id="det-em" class="det-em">🎁</span>
+        <div class="det-rare">NFT · ЭСКРОУ</div>
+        <div class="det-back rp" data-act="back">←</div>
+      </div>
+      <div class="det-info">
+        <div class="det-name" id="det-name">—</div>
+        <div class="det-org"><span class="ldot"></span> <b id="det-org">—</b> · <span id="det-status">Live</span></div>
+        <div class="det-grid">
+          <div class="dg"><span class="dg-v"><span id="det-min">0</span> <span class="star-i"></span></span><span class="dg-l">Мин. ставка</span></div>
+          <div class="dg"><span class="dg-v" id="det-part">0 чел.</span><span class="dg-l">Участников</span></div>
+          <div class="dg"><span class="dg-v" id="det-chance">0%</span><span class="dg-l">Мой шанс</span></div>
+        </div>
+        <div class="det-prog"><div class="det-pf" id="det-pf" style="width:0%"></div></div>
+        <div class="det-timer"><span class="ldot"></span> Банк: <b><span id="det-bank">0</span> <span class="star-i"></span></b> · крутится через <b id="det-timer">—</b></div>
+        <button class="btn btn-v rp" id="det-buy" data-act="stake-open"><span class="star-i w"></span> Сделать ставку</button>
+        <button class="btn btn-dim rp hid" id="det-cancel" data-act="pool-cancel">Отменить раунд (ставок нет)</button>
+      </div>
+      <div class="mtabs">
+        <button class="mtab on rp" data-wmode="av">👤 Аватарки</button>
+        <button class="mtab rp" data-wmode="num">🔢 Проценты</button>
+      </div>
+      <div class="wheel-sec">
+        <div class="wheel-wrap">
+          <svg class="w-ptr" width="22" height="26" viewBox="0 0 22 26"><polygon points="11,24 21,2 1,2" fill="#f59e0b" stroke="#fde68a" stroke-width="1"/></svg>
+          <canvas id="wcanvas" width="278" height="278"></canvas>
+          <div class="w-hub" id="w-hub">💎</div>
+        </div>
+        <div class="cd-card" id="wheel-cd">
+          <div class="cd-lbl">Барабан закрутится через</div>
+          <div class="cd-time" id="spin-cd">—</div>
+          <div class="cd-note">Время задал организатор · розыгрыш автоматический</div>
+        </div>
+        <div class="winner-card" id="det-winner">
+          <span class="w-crown">🏆</span>
+          <div class="w-title" id="det-wt">Победитель!</div>
+          <div class="w-sub" id="det-ws">Подарок уже в инвентаре победителя</div>
+        </div>
+        <div class="stakes-card">
+          <div class="stakes-lbl" id="stakes-lbl">📋 Ставки</div>
+          <div id="stakes-list"></div>
+        </div>
+        <div class="fair-card" id="wheel-fair"></div>
+      </div>
+    </div>
+
+    <!-- ══ СЕЙФ ══ -->
+    <div class="scr" id="sc-vault">
+      <div class="scr-head">
+        <div class="det-back rp static" data-act="back">←</div>
+        <div class="scr-head-t">🔒 КИБЕР-СЕЙФ</div>
+      </div>
+      <div class="pad">
+        <div class="grid-hdr-card">
+          <div class="ghc-thumb a2" id="vt-img">👁</div>
+          <div class="grow">
+            <div class="ghc-name" id="vt-name">—</div>
+            <div class="ghc-val" id="vt-org">NFT подарок</div>
+          </div>
+          <div class="ta-r">
+            <div class="gi-lbl">Банк</div>
+            <div class="gi-val"><span id="vt-bank">0</span> <span class="star-i"></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="vault-stage">
+        <div class="vault-safe" id="vault-safe"><div class="vault-dial"></div></div>
+        <div class="vault-hint" id="vt-hint"></div>
+      </div>
+      <div class="vault-form" id="vt-form">
+        <input class="vault-input" id="vt-num" type="number" min="1" placeholder="—" inputmode="numeric">
+        <button class="vault-btn rp" data-act="vault-try">Взломать код</button>
+      </div>
+      <div class="pad"><button class="btn btn-dim rp hid" id="vt-cancel" data-act="pool-cancel">Отменить раунд (попыток нет)</button></div>
+      <div class="winner-card" id="vt-winner">
+        <span class="w-crown">🏆</span>
+        <div class="w-title" id="vt-wt">Сейф вскрыт!</div>
+        <div class="w-sub" id="vt-ws"></div>
+      </div>
+      <div class="vault-grid-wrap">
+        <div class="vault-grid-hdr"><span>Поле чисел</span><span>Занято: <b id="vt-g-taken">0</b></span></div>
+        <div class="vault-grid" id="vt-grid"></div>
+      </div>
+      <div class="vault-feed" id="vt-feed"></div>
+      <div class="pad"><div class="fair-card" id="vault-fair"></div></div>
+    </div>
+
+    <!-- ══ АУКЦИОН ══ -->
+    <div class="scr" id="sc-auction">
+      <div class="scr-head">
+        <div class="det-back rp static" data-act="back">←</div>
+        <div class="scr-head-t">🕶 СЛЕПОЙ АУКЦИОН</div>
+      </div>
+      <div class="pad">
+        <div class="grid-hdr-card">
+          <div class="ghc-thumb a4" id="auc-img">🎭</div>
+          <div class="grow">
+            <div class="ghc-name" id="auc-name">—</div>
+            <div class="ghc-val" id="auc-org">NFT подарок · победитель забирает актив</div>
+          </div>
+        </div>
+      </div>
+      <div class="auc-blackout" id="auc-blackout">
+        <div class="auc-eye">🕶</div>
+        <div class="auc-bo-title">Полный блэкаут</div>
+        <div class="auc-bo-sub">Никто не видит чужих ставок и размер банка. Результат покажет только раскрытие в конце.</div>
+      </div>
+      <div class="auc-mine">
+        <div class="auc-mine-lbl">Твоя накопленная ставка</div>
+        <div class="auc-mine-val" id="auc-mine-val">— (ещё не ставил)</div>
+      </div>
+      <div class="cd-card mx" id="auc-cd-card">
+        <div class="cd-lbl">До раскрытия</div>
+        <div class="cd-time" id="auc-cd">—</div>
+        <div class="cd-note">Ставки не возвращаются: побеждает наибольшая накопленная, остальные остаются в банке</div>
+      </div>
+      <div class="vault-form" id="auc-form">
+        <input class="vault-input" id="auc-amt" type="number" placeholder="20+" inputmode="numeric">
+        <button class="vault-btn rp" data-act="auction-bid">Поставить</button>
+      </div>
+      <div class="pad"><button class="btn btn-dim rp hid" id="auc-cancel" data-act="pool-cancel">Отменить раунд (ставок нет)</button></div>
+      <div class="pad"><div class="result hid" id="auc-result"></div></div>
+      <div class="pad"><div class="fair-card" id="auction-fair"></div></div>
+    </div>
+
+    <!-- ══ ИВЕНТЫ ══ -->
+    <div class="scr" id="sc-events">
+      <div class="sh"><div class="sh-t">🏆 Лидеры</div></div>
+      <div class="mtabs" id="lb-tabs">
+        <button class="mtab rp" data-lb="day">День</button>
+        <button class="mtab rp" data-lb="week">Неделя</button>
+        <button class="mtab on rp" data-lb="month">Месяц</button>
+        <button class="mtab rp" data-lb="all">Всё время</button>
+      </div>
+      <div class="lb-banner" id="lb-banner"></div>
+      <div class="podium" id="lb-podium"></div>
+      <div id="lb-list"></div>
+      <div class="sh"><div class="sh-t">📜 Последние победители</div></div>
+      <div class="pad" id="winners-list"></div>
+    </div>
+
+    <!-- ══ СОЗДАТЬ ══ -->
+    <div class="scr" id="sc-create">
+      <div class="sh"><div class="sh-t">✨ Новый розыгрыш</div></div>
+      <div class="cs">
+        <div class="cs-step">1</div>
+        <div class="cs-t">Выбери подарок</div>
+        <div class="cs-s">Раунд создаётся только из подарка, который уже лежит у бота-хранителя <b>@{{ RELAY_USERNAME }}</b>. Так участники защищены: приз существует и уйдёт победителю автоматически.</div>
+        <div class="m-gifts-grid" id="cr-gifts"></div>
+        <button class="btn btn-dim rp" data-act="gift-deposit">📦 Передать подарок боту</button>
+      </div>
+      <div class="cs">
+        <div class="cs-step">2</div>
+        <div class="cs-t">Режим розыгрыша</div>
+        <div class="mtabs flush" id="cr-modes">
+          <button class="mtab on rp" data-cmode="wheel">🎡 Колесо</button>
+          <button class="mtab rp" data-cmode="vault">🔒 Сейф</button>
+          <button class="mtab rp" data-cmode="auction">🕶 Аукцион</button>
+        </div>
+        <div class="cs-s" id="cr-mode-hint"></div>
+      </div>
+      <div class="cs">
+        <div class="cs-step">3</div>
+        <div class="cs-t">Настройки</div>
+        <div class="cs-lbl" id="cr-stake-lbl">Мин. ставка</div>
+        <div class="chips" id="cr-stakes"></div>
+        <div id="cr-vault-box" class="hid">
+          <div class="cs-lbl">Размер сейфа (сколько чисел)</div>
+          <div class="chips" id="cr-vault-sizes">
+            <div class="chip rp" data-v="25">25</div><div class="chip rp" data-v="50">50</div>
+            <div class="chip on rp" data-v="100">100</div><div class="chip rp" data-v="125">125</div>
+          </div>
+          <div class="cs-s">Секретное число выбирает сервер и не знает никто, даже ты. Его хеш публикуется сразу, само число — после вскрытия.</div>
+        </div>
+        <div id="cr-time-box">
+          <div class="cs-lbl">Окончание</div>
+          <div class="chips" id="cr-times">
+            <div class="chip on rp" data-v="15">15 мин</div><div class="chip rp" data-v="30">30 мин</div>
+            <div class="chip rp" data-v="60">1 ч</div><div class="chip rp" data-v="360">6 ч</div>
+            <div class="chip rp" data-v="720">12 ч</div><div class="chip rp" data-v="1440">24 ч</div>
+          </div>
+        </div>
+      </div>
+      <div class="cs">
+        <div class="cs-step">4</div>
+        <div class="cs-t">Условия</div>
+        <div class="det-grid two">
+          <div class="dg"><span class="dg-v">Бесплатно</span><span class="dg-l">Создание</span></div>
+          <div class="dg"><span class="dg-v">{{ COMMISSION_PCT }}%</span><span class="dg-l">Комиссия</span></div>
+        </div>
+        <div class="cs-s">Ты получаешь <b>{{ 100 - COMMISSION_PCT }}%</b> от всех ставок сразу после завершения. Если ставок не будет — подарок вернётся в инвентарь.</div>
+        <button class="btn btn-v rp" data-act="pool-create">✨ Создать розыгрыш</button>
+      </div>
+    </div>
+
+    <!-- ══ ПРОФИЛЬ ══ -->
+    <div class="scr" id="sc-profile">
+      <div class="prof-hero">
+        <div class="prof-av" id="pf-av">🦊</div>
+        <div class="prof-name" id="pf-name">—</div>
+        <div class="prof-handle" id="pf-handle"></div>
+      </div>
+      <div class="prof-stats">
+        <div class="ps"><span class="ps-v" id="pf-won">0</span><span class="ps-l">НФТ выиграно</span></div>
+        <div class="ps"><span class="ps-v" id="pf-part">0</span><span class="ps-l">Участий</span></div>
+        <div class="ps"><span class="ps-v" id="pf-wd">0</span><span class="ps-l">Выведено</span></div>
+      </div>
+      <div class="calc-box streak-box">
+        <div class="streak-row">
+          <div class="streak-fire">🔥</div>
+          <div><div class="streak-n" id="streak-count">0</div><div class="streak-l">дней подряд</div></div>
+        </div>
+        <div class="streak-info" id="streak-info"></div>
+      </div>
+      <div class="wallet">
+        <div class="w-lbl">Баланс</div>
+        <div class="w-bal big"><span class="star-i"></span> <span id="pf-bal">0</span> <small>VLD</small></div>
+        <div class="w-addr" id="pf-ton">TON-кошелёк не подключён</div>
+        <div class="w-btns">
+          <button class="w-btn rp" data-act="topup">Пополнить</button>
+          <button class="w-btn rp" data-act="transfer-open">Перевести</button>
+          <button class="w-btn rp" data-act="payout-open">Вывести</button>
+        </div>
+      </div>
+      <div class="ptabs" id="ptabs">
+        <button class="ptab on" data-pt="inv">Инвентарь</button>
+        <button class="ptab" data-pt="tx">Транзакции</button>
+        <button class="ptab" data-pt="wd">Выводы</button>
+        <button class="ptab" data-pt="ch">Каналы</button>
+      </div>
+      <div class="ptc on" id="ptc-inv"></div>
+      <div class="ptc" id="ptc-tx"></div>
+      <div class="ptc" id="ptc-wd"></div>
+      <div class="ptc" id="ptc-ch">
+        <div class="ch-bind">
+          <div class="ch-t">Привязать канал</div>
+          <div class="ch-s">Розыгрыши для подписчиков твоего канала — в разработке.</div>
+        </div>
+        <div class="ch-empty">Нет привязанных каналов</div>
+      </div>
+      <div class="gap"></div>
+      <div class="ref-card">
+        <div class="ref-t">Рефералы</div>
+        <div class="ref-s">Приглашай друзей — получай <b id="ref-rate">1%</b> с их ставок пассивно. Выплачивается из комиссии платформы.</div>
+        <div class="ref-link" id="ref-link">—</div>
+        <div class="ref-btns">
+          <button class="ref-btn rp" data-act="ref-copy">📋 Скопировать</button>
+          <button class="ref-btn s rp" data-act="ref-share">↗ Поделиться</button>
+        </div>
+      </div>
+      <div class="ref-stats">
+        <div class="rst"><div class="rsv" id="ref-invited">0</div><div class="rsl">Приглашено</div></div>
+        <div class="rst"><div class="rsv"><span class="star-i"></span> <span id="ref-earned">0</span></div><div class="rsl">Заработано</div></div>
+      </div>
+      <div class="lvl">
+        <div class="lvl-hdr"><span id="lvl-name">Уровень 1</span><b id="lvl-xp">0 / 100 XP</b></div>
+        <div class="lvl-bar"><div class="lvl-f" id="lvl-f" style="width:0%"></div></div>
+      </div>
+      <div class="lvl-cards" id="lvl-cards">
+        <div class="lc" data-from="1"><span class="lc-em">🌱</span><div class="lc-n">Новичок</div></div>
+        <div class="lc" data-from="3"><span class="lc-em">🔥</span><div class="lc-n">Игрок</div></div>
+        <div class="lc" data-from="7"><span class="lc-em">💎</span><div class="lc-n">Про</div></div>
+        <div class="lc" data-from="12"><span class="lc-em">👑</span><div class="lc-n">Легенда</div></div>
+      </div>
+    </div>
+  </div><!-- /screens -->
+
+  <!-- NAVBAR -->
+  <div class="navbar">
+    <button class="nb on" data-tab="home"><div class="nb-ic">🏠</div>Главная</button>
+    <button class="nb" data-tab="events"><div class="nb-ic">👑</div>Ивенты</button>
+    <div class="nb-ctr" data-tab="create">
+      <button class="nb-fab rp">＋</button>
+      <div class="nb-fab-lbl">Создать</div>
+    </div>
+    <button class="nb" data-tab="profile"><div class="nb-ic">👤</div>Профиль</button>
+    <button class="nb" data-act="fair-info"><div class="nb-ic">🛡</div>Честность</button>
+  </div>
+</div><!-- /app -->
+
+<!-- STAKE MODAL -->
+<div class="overlay" id="stake-modal">
+  <div class="modal">
+    <div class="m-handle"></div>
+    <div class="m-title">Сделать ставку</div>
+    <div class="m-sub">Участников: <b id="sm-pcount">0</b> · шанс после ставки: <b id="sm-chance">0%</b></div>
+    <div class="m-body">
+      <div class="m-min">Минимум <span id="sm-min">5</span> VLD · баланс <span id="sm-bal">0</span></div>
+      <div class="m-val"><span class="star-i lg"></span> <span id="m-sv-num">50</span> <span>VLD</span></div>
+      <input class="m-slider" id="sm-slider" type="range" min="5" max="500" step="5" value="50">
+      <input class="ch-inp" id="sm-input" type="number" inputmode="numeric" placeholder="Своя сумма">
+      <button class="btn btn-v rp" data-act="stake-confirm">Подтвердить ставку</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOPUP MODAL -->
+<div class="overlay" id="topup-modal">
+  <div class="modal">
+    <div class="m-handle"></div>
+    <div class="m-title">Пополнение баланса</div>
+    <div class="m-body">
+      <div class="m-tabs" id="tu-tabs">
+        <button class="m-tab on rp" data-tum="stars">⭐ Stars</button>
+        <button class="m-tab rp" data-tum="ton">💎 TON</button>
+      </div>
+
+      <div id="tu-stars">
+        <div class="m-min" id="tu-note">Оплата через Telegram Stars</div>
+        <div class="exc-grid" id="tu-presets">
+          <div class="exc-card rp" data-v="100"><span class="exc-card-star">⭐</span><div class="exc-card-n">100</div><div class="exc-card-vld"></div></div>
+          <div class="exc-card rp" data-v="200"><span class="exc-card-star">⭐</span><div class="exc-card-n">200</div><div class="exc-card-vld"></div></div>
+          <div class="exc-card rp" data-v="300"><span class="exc-card-star">⭐</span><div class="exc-card-n">300</div><div class="exc-card-vld"></div></div>
+          <div class="exc-card rp" data-v="500"><span class="exc-card-star">⭐</span><div class="exc-card-n">500</div><div class="exc-card-vld"></div></div>
+          <div class="exc-card rp" data-v="750"><span class="exc-card-star">⭐</span><div class="exc-card-n">750</div><div class="exc-card-vld"></div></div>
+          <div class="exc-card rp" data-v="1000"><span class="exc-card-star">⭐</span><div class="exc-card-n">1000</div><div class="exc-card-vld"></div></div>
+        </div>
+        <input class="ch-inp" id="tu-amount" type="number" inputmode="numeric" placeholder="Своя сумма Stars" min="1" max="100000">
+        <div class="exc-equiv">
+          <div class="exc-equiv-side"><span>⭐</span><span id="tu-eq-stars">0</span></div>
+          <div class="exc-equiv-eq">=</div>
+          <div class="exc-equiv-side"><span class="star-i"></span><span id="tu-eq-vld">0</span></div>
+        </div>
+        <div class="m-note" id="tu-rate"></div>
+        <button class="btn btn-v rp" data-act="topup-confirm">Пополнить</button>
+      </div>
+
+      <div id="tu-ton" class="hid">
+        <div class="m-min" id="tt-note"></div>
+        <div id="tt-form">
+          <div class="m-val"><span id="tt-val">1</span> <span>TON</span></div>
+          <input class="m-slider" id="tt-slider" type="range" min="0.5" max="50" step="0.5" value="1">
+          <input class="ch-inp" id="tt-amount" type="number" inputmode="decimal" placeholder="Своя сумма TON">
+          <div class="exc-equiv">
+            <div class="exc-equiv-side"><span>💎</span><span id="tt-eq-ton">1</span></div>
+            <div class="exc-equiv-eq">=</div>
+            <div class="exc-equiv-side"><span class="star-i"></span><span id="tt-eq-vld">0</span></div>
+          </div>
+          <button class="btn btn-v rp" data-act="ton-pay">Оплатить в кошельке</button>
+        </div>
+        <div id="tt-wait" class="hid">
+          <div class="calc-box">
+            <div class="calc-row"><span>Сумма</span><span id="tt-w-amount">—</span></div>
+            <div class="calc-row copy rp" data-copy="tt-w-addr"><span>Адрес</span><span class="mono" id="tt-w-addr">—</span></div>
+            <div class="calc-row copy rp" data-copy="tt-w-comment"><span>Комментарий</span><span class="mono" id="tt-w-comment">—</span></div>
+          </div>
+          <div class="calc-warn on">Комментарий обязателен — по нему перевод попадёт на твой баланс. Нажми на строку, чтобы скопировать.</div>
+          <div class="m-note" id="tt-status">Ждём перевод в блокчейне…</div>
+          <button class="btn btn-dim rp" data-act="ton-open">Открыть кошелёк</button>
+          <button class="btn btn-v rp hid" id="tt-demo" data-act="ton-demo-pay">Демо: имитировать перевод</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TRANSFER MODAL -->
+<div class="overlay" id="transfer-modal">
+  <div class="modal">
+    <div class="m-handle"></div>
+    <div class="m-title">Перевести другу</div>
+    <div class="m-body">
+      <div class="m-min">Telegram ID получателя</div>
+      <input class="ch-inp" id="tr-recipient" type="number" inputmode="numeric" placeholder="Например, 123456789">
+      <div class="recip-status" id="tr-recip-status">&nbsp;</div>
+      <div class="m-min">Сумма (VLD)</div>
+      <input class="ch-inp" id="tr-amount" type="number" inputmode="numeric" placeholder="150">
+      <div class="calc-warn" id="tr-warn"></div>
+      <div class="calc-box">
+        <div class="calc-row"><span>Спишется с вас</span><span id="tr-calc-gross">0</span></div>
+        <div class="calc-row"><span id="tr-fee-label">Комиссия перевода</span><span class="calc-neg" id="tr-calc-fee">−0</span></div>
+        <div class="calc-row calc-total"><span>Получатель зачислит</span><span id="tr-calc-net">0</span></div>
+      </div>
+      <button class="btn btn-v rp" id="tr-submit-btn" data-act="transfer-confirm" disabled>Перевести</button>
+    </div>
+  </div>
+</div>
+
+<!-- PAYOUT MODAL -->
+<div class="overlay" id="payout-modal">
+  <div class="modal">
+    <div class="m-handle"></div>
+    <div class="m-title">Вывод средств</div>
+    <div class="m-body">
+      <div class="m-tabs" id="po-tabs">
+        <button class="m-tab on rp" data-pom="TON">💎 TON-кошелёк</button>
+        <button class="m-tab rp" data-pom="STARS">⭐ Telegram Stars</button>
+      </div>
+      <div class="m-min" id="po-dest-label">Адрес TON-кошелька (EQ… / UQ…)</div>
+      <input class="ch-inp" id="po-destination" type="text" placeholder="UQAbc123…" maxlength="80">
+      <div class="m-min">Сумма к списанию (VLD)</div>
+      <input class="ch-inp" id="po-amount" type="number" inputmode="numeric" placeholder="100">
+      <div class="calc-warn" id="po-warn"></div>
+      <div class="calc-box">
+        <div class="calc-row"><span id="po-fee-label">Комиссия вывода</span><span class="calc-neg" id="po-calc-fee">−0</span></div>
+        <div class="calc-row calc-total"><span>Придёт</span><span id="po-calc-net">0</span></div>
+      </div>
+      <div class="m-note">Автовыплаты отключены — заявку обрабатывает администратор. При отказе сумма возвращается полностью.</div>
+      <button class="btn btn-v rp" id="po-submit-btn" data-act="payout-confirm" disabled>Запросить вывод</button>
+    </div>
+  </div>
+</div>
+
+<!-- FAIR MODAL -->
+<div class="overlay" id="fair-modal">
+  <div class="modal">
+    <div class="m-handle"></div>
+    <div class="m-title">🛡 Как устроена честность</div>
+    <div class="m-body fair-text">
+      <p><b>Платформа не играет против тебя.</b> Все выплаты — это ставки самих участников: победитель получает подарок, организатор — {{ 100 - COMMISSION_PCT }}% банка, платформа — {{ COMMISSION_PCT }}% комиссии. Выгоды подкручивать результат у нас нет.</p>
+      <p><b>Приз существует.</b> Раунд нельзя создать, пока подарок не передан боту-хранителю @{{ RELAY_USERNAME }}. Организатор не может участвовать в своём раунде.</p>
+      <p><b>Колесо.</b> При создании публикуется <span class="mono">seed_hash = sha256(seed)</span>. После розыгрыша раскрывается seed, билет = <span class="mono">HMAC-SHA256(seed, "id:банк:ставок") mod банк</span>. Победитель — чей отрезок ставок накрывает билет.</p>
+      <p><b>Сейф.</b> Число выбирает сервер. Сразу публикуется <span class="mono">sha256("число:seed")</span>, после вскрытия — число и seed.</p>
+      <p><b>Аукцион.</b> Побеждает наибольшая накопленная ставка; при равенстве — тот, кто достиг её раньше. После раскрытия видны все суммы.</p>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="{{ url_for('static', filename='js/vloody.js') }}"></script>
+</body>
+</html>

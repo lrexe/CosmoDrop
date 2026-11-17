@@ -766,3 +766,140 @@ body {
 .game-result .gr-sub { font-size: 13px; color: var(--muted); margin-top: 3px; }
 .game-result.win .gr-title { color: var(--green); }
 .game-result.lose .gr-title { color: var(--red); }
+
+/* ===========================================================================
+   Аркада: хаб игр, ставка, ракета, мины, кости
+   =========================================================================== */
+.back-btn {
+    border: none; background: none; color: var(--blue); font-family: inherit; font-weight: 700;
+    font-size: 13px; padding: 0 0 6px; cursor: pointer;
+}
+
+/* ---- хаб ---- */
+.hub-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.hub-card {
+    position: relative; overflow: hidden; text-align: left; cursor: pointer; font-family: inherit; color: var(--text);
+    display: flex; flex-direction: column; gap: 2px; padding: 14px 14px 12px; min-height: 132px;
+    border-radius: var(--radius); border: 1px solid var(--stroke);
+    background:
+        radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--hue) 26%, transparent), transparent 62%),
+        var(--surface);
+    transition: transform 0.18s var(--ease), border-color 0.18s;
+}
+.hub-card:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--hue) 55%, transparent); }
+.hub-card:active { transform: scale(0.98); }
+.hub-icon { font-size: 34px; line-height: 1.1; filter: drop-shadow(0 6px 14px color-mix(in srgb, var(--hue) 60%, transparent)); }
+.hub-name { font-size: 15px; font-weight: 800; margin-top: 6px; }
+.hub-desc { font-size: 11.5px; color: var(--muted); line-height: 1.3; }
+.hub-tag {
+    margin-top: auto; align-self: flex-start; font-size: 10.5px; font-weight: 800; letter-spacing: 0.2px;
+    color: var(--hue); background: color-mix(in srgb, var(--hue) 14%, transparent);
+    border-radius: 999px; padding: 3px 9px;
+}
+.hub-new {
+    position: absolute; top: 10px; right: 10px; font-size: 9px; font-weight: 800; letter-spacing: 0.6px;
+    background: var(--gold-grad); color: #3a2a00; border-radius: 6px; padding: 2px 6px;
+}
+
+/* ---- ставка ---- */
+.bet { margin-top: 12px; }
+.bet-label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.bet-row { display: flex; gap: 8px; }
+.bet-step, .bet-presets button {
+    border: 1px solid var(--stroke-2); background: var(--surface); color: var(--text);
+    font-family: inherit; font-weight: 800; font-size: 13px; border-radius: 12px; cursor: pointer;
+}
+.bet-step { width: 46px; flex-shrink: 0; }
+.bet-step:disabled, .bet-presets button:disabled { opacity: 0.45; cursor: not-allowed; }
+.bet-input {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; padding: 0 12px; height: 44px;
+    border-radius: 12px; border: 1px solid var(--stroke-2); background: rgba(0, 0, 0, 0.25);
+}
+.bet-input:focus-within { border-color: var(--blue); }
+.bet-input input {
+    flex: 1; min-width: 0; width: 100%; border: none; outline: none; background: none; color: var(--text);
+    font-family: inherit; font-weight: 800; font-size: 16px; -moz-appearance: textfield;
+}
+.bet-input input::-webkit-outer-spin-button, .bet-input input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.bet-input input:disabled { opacity: 0.6; }
+.bet-input.sm { flex: 0 0 110px; height: 36px; }
+.bet-input.sm input { font-size: 14px; }
+.bet-presets { display: flex; gap: 6px; margin-top: 8px; }
+.bet-presets button { flex: 1; padding: 7px 0; font-size: 12px; border-radius: 10px; color: var(--muted); }
+.auto-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 12px 0; font-size: 13px; font-weight: 600; }
+
+/* ---- история ставок ---- */
+.bets { display: flex; flex-direction: column; gap: 6px; }
+.bet-line {
+    display: grid; grid-template-columns: 1.5fr 1fr 0.9fr 0.9fr; align-items: center; gap: 8px;
+    padding: 9px 12px; border-radius: 12px; font-size: 12px;
+    background: var(--surface); border: 1px solid var(--stroke);
+}
+.bet-line > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bet-line .bl-game { font-weight: 700; }
+.bet-line .bl-bet, .bet-line .bl-mult { color: var(--muted); }
+.bet-line .bl-profit { text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
+.bet-line.won .bl-profit { color: var(--green); }
+.bet-line.lost .bl-profit { color: var(--red); }
+
+/* ---- ракета ---- */
+.crash-card { padding: 14px; }
+.crash-stage {
+    position: relative; height: 200px; border-radius: 14px; overflow: hidden;
+    background: radial-gradient(120% 100% at 50% 100%, rgba(51, 144, 236, 0.16), transparent 70%), rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--stroke); transition: border-color 0.2s, box-shadow 0.2s;
+}
+.crash-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.crash-stage.won { border-color: var(--green); box-shadow: 0 0 24px rgba(48, 196, 141, 0.25) inset; }
+.crash-stage.lost { border-color: var(--red); box-shadow: 0 0 24px rgba(236, 95, 95, 0.25) inset; animation: shake 0.4s; }
+.crash-mult {
+    position: absolute; top: 14px; left: 16px; font-size: 38px; font-weight: 800; letter-spacing: -1px;
+    font-variant-numeric: tabular-nums; text-shadow: 0 2px 14px rgba(0, 0, 0, 0.6);
+}
+.crash-stage.won .crash-mult { color: var(--green); }
+.crash-stage.lost .crash-mult { color: var(--red); }
+.crash-note { position: absolute; left: 16px; top: 62px; right: 16px; font-size: 12px; color: var(--muted); }
+@keyframes shake { 20% { transform: translateX(-5px); } 40% { transform: translateX(5px); } 60% { transform: translateX(-3px); } 80% { transform: translateX(3px); } }
+
+/* ---- мины ---- */
+.mines-top { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.mt-cell { background: rgba(0, 0, 0, 0.22); border: 1px solid var(--stroke); border-radius: 12px; padding: 8px 6px; text-align: center; }
+.mt-cell span { display: block; font-size: 10px; color: var(--muted); }
+.mt-cell b { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.mines-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; margin-top: 12px; }
+.mine-cell {
+    aspect-ratio: 1; border-radius: 12px; border: 1px solid var(--stroke-2); cursor: pointer;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03));
+    font-size: 22px; display: grid; place-items: center; padding: 0; color: inherit;
+    transition: transform 0.12s var(--ease), background 0.2s, border-color 0.2s;
+}
+.mine-cell:not(:disabled):hover { transform: translateY(-2px); border-color: var(--blue); }
+.mine-cell:not(:disabled):active { transform: scale(0.94); }
+.mine-cell:disabled { cursor: default; }
+.mine-cell:disabled:not(.safe):not(.bomb) { opacity: 0.55; }
+.mine-cell.safe { background: rgba(48, 196, 141, 0.16); border-color: rgba(48, 196, 141, 0.55); animation: pop 0.25s var(--ease); }
+.mine-cell.bomb { background: rgba(236, 95, 95, 0.12); border-color: rgba(236, 95, 95, 0.4); opacity: 0.8; }
+.mine-cell.boom { background: rgba(236, 95, 95, 0.4); border-color: var(--red); opacity: 1; animation: shake 0.4s; }
+
+/* ---- кости ---- */
+.dice-roll {
+    text-align: center; font-size: 44px; font-weight: 800; letter-spacing: -1px; padding: 6px 0 12px;
+    font-variant-numeric: tabular-nums; transition: color 0.2s;
+}
+.dice-roll.won, .dice-recent .won { color: var(--green); }
+.dice-roll.lost, .dice-recent .lost { color: var(--red); }
+.dice-track { position: relative; height: 14px; border-radius: 999px; background: rgba(236, 95, 95, 0.35); }
+.dice-zone { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px 0 0 999px; background: var(--green); transition: width 0.1s; }
+.dice-marker {
+    position: absolute; top: 50%; width: 6px; height: 26px; border-radius: 4px; background: #fff;
+    transform: translate(-50%, -50%); transition: left 0.7s var(--ease); box-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
+}
+.dice-marker.won { background: var(--green); box-shadow: 0 0 12px var(--green); outline: 2px solid #fff; }
+.dice-marker.lost { background: var(--red); box-shadow: 0 0 12px var(--red); outline: 2px solid #fff; }
+.dice-scale { display: flex; justify-content: space-between; font-size: 10px; color: var(--faint); margin-top: 5px; }
+.dice-slider { width: 100%; margin-top: 10px; accent-color: #3390ec; height: 28px; cursor: pointer; }
+.dice-recent { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; min-height: 0; }
+.dice-recent span {
+    font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 999px; font-variant-numeric: tabular-nums;
+    background: var(--surface-2); border: 1px solid var(--stroke);
+}

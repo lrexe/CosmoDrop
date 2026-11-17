@@ -2,15 +2,9 @@
 {% block title %}CosmoDrop — Игры{% endblock %}
 
 {% block content %}
-<section class="page-head reveal">
+<section class="page-head reveal" id="game-head">
     <h1>Мини-игры</h1>
-    <p>Апгрейд подарков, контракты и колесо фортуны — умножай звёзды.</p>
-</section>
-
-<section class="seg reveal" id="game-seg">
-    <button data-tab="upgrade" class="active">🔼 Апгрейд</button>
-    <button data-tab="contract">📄 Контракты</button>
-    <button data-tab="wheel">🎡 Колесо</button>
+    <p>Шесть способов умножить звёзды: от ракеты до колеса фортуны.</p>
 </section>
 
 <section id="game-root" class="reveal">
@@ -19,5 +13,6 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/arcade.js') }}"></script>
 <script src="{{ url_for('static', filename='js/games.js') }}"></script>
 {% endblock %}

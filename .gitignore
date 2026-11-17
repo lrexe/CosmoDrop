@@ -17,3 +17,5 @@ instance/*.db
 .idea/
 .vscode/
 .DS_Store
+instance/relay_state.json*
+.superpowers/

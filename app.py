@@ -1,11 +1,17 @@
+import hmac
 import os
+import secrets
 
-from flask import Flask, render_template, jsonify, request
+from bot.envfile import load_env
+
+load_env()        # секреты из .env — до импорта модулей, которые читают окружение
+
+from flask import Flask, render_template, jsonify, request  # noqa: E402
 from flask_migrate import Migrate
 
-from models import db, User
-from bot.cases import cases_bp
-from bot.games import games_bp
+from models import db, ensure_columns
+from bot.auth import init_security, DEMO_MODE, WEBHOOK_SECRET
+from bot.vloody import vloody_bp, handle_payment_update, COMMISSION_RATE
 
 # ---------------------------------------------------------------------------
 # КОНФИГУРАЦИЯ
@@ -15,6 +21,23 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 # telegram_id демо-пользователя для локального запуска вне Telegram
 DEMO_TELEGRAM_ID = int(os.getenv("DEMO_TELEGRAM_ID", "111222333"))
+
+# Старые игры против платформы (кейсы, ракета, мины, кости, апгрейд, колесо).
+# В Vloody платформа не платит из своего кармана, поэтому по умолчанию они выключены.
+LEGACY_GAMES = os.getenv("LEGACY_GAMES", "").strip() == "1"
+
+BOT_USERNAME = os.getenv("BOT_USERNAME", "VloodyGamesBot")
+RELAY_USERNAME = os.getenv("RELAY_USERNAME", "VloodyRelay")
+
+
+def secret_key():
+    """В бою SECRET_KEY обязателен; в демо генерируем случайный на время запуска."""
+    key = os.getenv("SECRET_KEY")
+    if key:
+        return key
+    if not DEMO_MODE:
+        raise RuntimeError("Задайте переменную окружения SECRET_KEY")
+    return secrets.token_hex(32)
 
 
 def build_database_uri():
@@ -30,81 +53,92 @@ def build_database_uri():
 
 def create_app():
     app = Flask(__name__)
-    app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "cosmo-drop-dev-secret")
+    app.config["SECRET_KEY"] = secret_key()
     app.config["SQLALCHEMY_DATABASE_URI"] = build_database_uri()
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config["UPLOAD_FOLDER"] = os.path.join(BASE_DIR, "static", "files")
     app.config["JSON_AS_ASCII"] = False
+    app.config["MAX_CONTENT_LENGTH"] = 64 * 1024      # тела запросов у нас крошечные
 
     db.init_app(app)
     Migrate(app, db)
 
     with app.app_context():
         db.create_all()
+        ensure_columns()
 
-    app.register_blueprint(cases_bp)
-    app.register_blueprint(games_bp)
+    app.register_blueprint(vloody_bp)
+    init_security(app)
 
-    # демо-id доступен во всех шаблонах как DEMO_TELEGRAM_ID
     @app.context_processor
     def inject_globals():
-        return {"DEMO_TELEGRAM_ID": DEMO_TELEGRAM_ID}
+        return {"DEMO_TELEGRAM_ID": DEMO_TELEGRAM_ID, "DEMO_MODE": DEMO_MODE,
+                "BOT_USERNAME": BOT_USERNAME, "RELAY_USERNAME": RELAY_USERNAME,
+                "COMMISSION_PCT": int(COMMISSION_RATE * 100)}
 
     # ----------------------------- СТРАНИЦЫ -----------------------------
     @app.route("/")
-    def main():
-        return render_template("main.html", active="home")
+    def index():
+        return render_template("vloody.html")
 
-    @app.route("/cases")
-    def cases():
-        return render_template("cases.html", active="cases")
+    @app.route("/tonconnect-manifest.json")
+    def tonconnect_manifest():
+        base = request.url_root.rstrip("/")
+        return jsonify({"url": base, "name": "Vloody",
+                        "iconUrl": base + "/static/img/vloody-icon.png"})
 
-    @app.route("/games")
-    def games():
-        return render_template("games.html", active="games")
-
-    @app.route("/rating")
-    def rating():
-        return render_template("rating.html", active="rating")
-
-    @app.route("/profile")
-    def profile():
-        return render_template("profile.html", active="profile")
+    @app.route("/admin")
+    def admin_page():
+        # сама страница ничего не раскрывает: данные отдаёт только /api/admin/* по секрету
+        resp = app.make_response(render_template("admin.html"))
+        resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
 
     @app.route("/health")
     def health():
         return jsonify({"status": "ok"})
 
+    if LEGACY_GAMES:
+        register_legacy(app)
+
     # ----------------------- TELEGRAM PAYMENT --------------------------
     @app.route("/api/telegram_payment", methods=["POST"])
     def telegram_payment():
-        data = request.get_json(silent=True) or {}
-
-        if "pre_checkout_query" in data:
-            return jsonify({"ok": True})
-
-        if "message" in data and "successful_payment" in data["message"]:
-            payment = data["message"]["successful_payment"]
-            telegram_user = data["message"]["from"]
-            telegram_id = telegram_user["id"]
-            amount = payment["total_amount"] // 100
-
-            user = User.query.filter_by(telegram_id=telegram_id).first()
-            if not user:
-                return jsonify({"error": "User not found"}), 404
-
-            user.stars_balance += amount
-            db.session.commit()
-            return jsonify({"telegram_id": telegram_id,
-                            "new_balance": user.stars_balance})
-
-        return jsonify({"status": "ignored"})
+        # вебхук принимает только Telegram: он присылает секрет, заданный в setWebhook
+        got = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if not WEBHOOK_SECRET or not hmac.compare_digest(got, WEBHOOK_SECRET):
+            return jsonify({"error": "Forbidden"}), 403
+        return jsonify(handle_payment_update(request.get_json(silent=True) or {}))
 
     return app
+
+
+def register_legacy(app):
+    """Старый CosmoDrop: страницы и API игр против платформы (LEGACY_GAMES=1)."""
+    from bot.cases import cases_bp
+    from bot.games import games_bp
+    from bot.arcade import arcade_bp
+
+    app.register_blueprint(cases_bp)
+    app.register_blueprint(games_bp)
+    app.register_blueprint(arcade_bp)
+
+    pages = {"main": ("/legacy", "main.html", "home"), "cases": ("/cases", "cases.html", "cases"),
+             "games": ("/games", "games.html", "games"), "rating": ("/rating", "rating.html", "rating"),
+             "profile": ("/profile", "profile.html", "profile")}
+    for endpoint, (url, template, active) in pages.items():
+        app.add_url_rule(url, endpoint,
+                         lambda t=template, a=active: render_template(t, active=a))
 
 
 app = create_app()
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    if DEMO_MODE:
+        print("⚠️  ДЕМО-РЕЖИМ: BOT_TOKEN не задан (или DEMO_MODE=1) — все запросы без "
+              "Telegram initData идут от демо-пользователя, пополнение открыто.")
+    # отладчик Flask даёт выполнение кода из браузера — только локально и только в демо
+    debug = DEMO_MODE and os.getenv("FLASK_DEBUG", "1") == "1"
+    app.run(host=os.getenv("HOST", "127.0.0.1"), port=int(os.getenv("PORT", "5000")), debug=debug)

@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Vloody · Админ</title>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --void:#0A0A0C;--deep:#101012;--lift:#141417;--card:#18161A;--line:#ffffff14;
+  --v:#B8001F;--v2:#E8102F;--v3:#FF6B7A;--v4:#B8001F1f;--gold:#D4AF37;--em:#10b981;--rose:#f43f5e;
+  --t0:#F2EFEE;--t1:#F2EFEEcc;--t2:#F2EFEE80;
+  --syne:'Oswald',system-ui,sans-serif;--inter:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--void);color:var(--t0);font-family:var(--inter);font-size:14px;min-height:100vh;}
+button,input,select{font-family:inherit;font-size:13px;}
+.hid{display:none!important;}
+.mono{font-family:var(--mono);font-size:12px;}
+.muted{color:var(--t2);}
+.pos{color:var(--em);} .neg{color:var(--rose);} .warn{color:var(--gold);}
+
+/* вход */
+#login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+.login-card{width:100%;max-width:360px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:28px;}
+.logo{font-family:var(--syne);font-size:26px;font-weight:700;letter-spacing:1px;text-transform:uppercase;}
+.logo em{font-style:normal;color:var(--v2);}
+.login-card p{color:var(--t2);font-size:13px;margin:6px 0 18px;line-height:1.5;}
+.inp{width:100%;background:var(--deep);border:1px solid var(--line);border-radius:10px;color:var(--t0);padding:11px 12px;outline:none;}
+.inp:focus{border-color:var(--v2);}
+.btn{background:var(--v);border:1px solid var(--v);color:#fff;font-weight:700;border-radius:10px;padding:10px 16px;cursor:pointer;}
+.btn:hover{background:var(--v2);}
+.btn.block{width:100%;margin-top:12px;}
+.btn.ghost{background:transparent;border-color:var(--line);color:var(--t1);}
+.btn.ghost:hover{border-color:var(--v2);color:var(--t0);background:transparent;}
+.btn.ok{background:#0b7a55;border-color:#0b7a55;} .btn.ok:hover{background:var(--em);}
+.btn.sm{padding:6px 10px;font-size:12px;border-radius:8px;}
+.btn:disabled{opacity:.4;cursor:not-allowed;}
+.err{color:var(--v3);font-size:12.5px;margin-top:10px;min-height:16px;}
+
+/* каркас */
+header{display:flex;align-items:center;gap:16px;padding:14px 24px;border-bottom:1px solid var(--line);background:var(--deep);position:sticky;top:0;z-index:5;flex-wrap:wrap;}
+header .logo{font-size:20px;}
+.badge{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.5px;padding:3px 8px;border-radius:999px;border:1px solid var(--line);color:var(--t2);}
+.badge.demo{background:var(--v4);border-color:var(--v);color:var(--v3);}
+nav{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto;}
+nav button{background:none;border:none;color:var(--t2);font-weight:600;padding:8px 12px;border-radius:8px;cursor:pointer;}
+nav button:hover{color:var(--t0);}
+nav button.on{background:var(--v4);color:var(--v3);}
+nav button .cnt{background:var(--v2);color:#fff;font-size:10px;font-weight:700;border-radius:999px;padding:1px 6px;margin-left:5px;}
+main{max-width:1180px;margin:0 auto;padding:22px 24px 60px;}
+h2{font-family:var(--syne);font-size:20px;font-weight:600;letter-spacing:.5px;margin-bottom:14px;}
+h3{font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.8px;margin:24px 0 10px;}
+.toolbar{display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;}
+.toolbar .inp{max-width:280px;}
+.seg{display:flex;background:var(--deep);border:1px solid var(--line);border-radius:10px;padding:3px;}
+.seg button{background:none;border:none;color:var(--t2);font-weight:600;padding:6px 12px;border-radius:7px;cursor:pointer;}
+.seg button.on{background:var(--card);color:var(--t0);}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;}
+.tile .lbl{font-size:11.5px;color:var(--t2);font-weight:600;}
+.tile .val{font-family:var(--syne);font-size:28px;font-weight:600;margin-top:6px;font-variant-numeric:tabular-nums;}
+.tile .val small{font-family:var(--inter);font-size:12px;color:var(--t2);font-weight:600;margin-left:4px;}
+.tile .sub{font-size:11.5px;color:var(--t2);margin-top:4px;}
+.tile.accent{border-color:var(--v);background:linear-gradient(160deg,var(--v4),var(--card));}
+
+.tbl-wrap{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow-x:auto;}
+table{width:100%;border-collapse:collapse;}
+th{font-size:11px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap;}
+td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;}
+td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
+.empty{padding:28px;text-align:center;color:var(--t2);}
+.pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;border:1px solid var(--line);white-space:nowrap;}
+.pill.live,.pill.pending,.pill.withdraw_requested{color:var(--gold);border-color:#D4AF3766;}
+.pill.finished,.pill.paid,.pill.held{color:var(--em);border-color:#10b98166;}
+.pill.cancelled,.pill.rejected,.pill.banned{color:var(--rose);border-color:#f43f5e66;}
+.pill.locked{color:var(--v3);border-color:var(--v);}
+.link{color:var(--v3);cursor:pointer;text-decoration:none;}
+.link:hover{text-decoration:underline;}
+.note{background:var(--lift);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:12.5px;color:var(--t1);line-height:1.6;margin-bottom:14px;}
+.note b{color:var(--t0);}
+
+#drawer{position:fixed;inset:0;background:#000000b0;z-index:20;display:flex;justify-content:flex-end;}
+.drawer-card{width:100%;max-width:520px;background:var(--deep);border-left:1px solid var(--line);padding:22px;overflow-y:auto;}
+.drawer-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:14px;}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px;margin-bottom:8px;}
+.kv span:nth-child(odd){color:var(--t2);}
+#toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--card);border:1px solid var(--v);color:var(--t0);padding:10px 18px;border-radius:10px;opacity:0;transition:all .2s;z-index:50;pointer-events:none;font-weight:600;}
+#toast.on{opacity:1;transform:translateX(-50%);}
+@media(max-width:640px){header{padding:12px 14px;} main{padding:16px 14px 50px;} nav{margin-left:0;}}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <form class="login-card" id="login-form">
+    <div class="logo"><em>Vloody</em> · Админ</div>
+    <p>Введи секрет администратора (<span class="mono">ADMIN_SECRET</span>). Он хранится только в этой вкладке и исчезает при её закрытии.</p>
+    <input class="inp" id="secret" type="password" placeholder="Секрет администратора" autocomplete="current-password" autofocus>
+    <button class="btn block" type="submit">Войти</button>
+    <div class="err" id="login-err"></div>
+  </form>
+</div>
+
+<div id="panel" class="hid">
+  <header>
+    <div class="logo"><em>Vloody</em> · Админ</div>
+    <span class="badge hid" id="demo-badge">ДЕМО-РЕЖИМ</span>
+    <nav id="nav">
+      <button data-tab="overview" class="on">Обзор</button>
+      <button data-tab="payouts">Выводы<span class="cnt hid" id="cnt-payouts"></span></button>
+      <button data-tab="pools">Раунды</button>
+      <button data-tab="users">Игроки</button>
+      <button data-tab="gifts">Подарки<span class="cnt hid" id="cnt-gifts"></span></button>
+      <button data-tab="revenue">Доход</button>
+      <button data-act="logout" class="muted">Выйти</button>
+    </nav>
+  </header>
+  <main id="view"></main>
+</div>
+
+<div id="drawer" class="hid"><div class="drawer-card" id="drawer-card"></div></div>
+<div id="toast"></div>
+
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const fmt = (n) => (Number(n) || 0).toLocaleString("ru-RU");
+  const when = (ts) => ts ? new Date(ts * 1000).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
+  const pill = (st, label) => `<span class="pill ${esc(st)}">${esc(label || st)}</span>`;
+  const MODE = { wheel: "🎡 Колесо", vault: "🔒 Сейф", auction: "🕶 Аукцион" };
+  const PO = { pending: "ожидает", paid: "выплачено", rejected: "отклонено" };
+  const PL = { live: "идёт", finished: "завершён", cancelled: "отменён" };
+  const GS = { held: "в инвентаре", locked: "в раунде", withdraw_requested: "ждёт выдачи", withdrawn: "выдан" };
+
+  let secret = sessionStorage.getItem("vl_admin") || "";
+  let tab = "overview", stats = null;
+  const filters = { payouts: "pending", pools: "live", gifts: "withdraw_requested", users: "" };
+
+  function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove("on"), 2600); }
+
+  async function api(path, body) {
+    const opts = { method: body === undefined ? "GET" : "POST", headers: { "Content-Type": "application/json", "X-Admin-Secret": secret } };
+    if (body !== undefined) opts.body = JSON.stringify(body);
+    const res = await fetch("/api/admin/" + path, opts);
+    let data = null; try { data = await res.json(); } catch (e) {}
+    if (res.status === 403) { logout("Сессия завершена: секрет не принят"); throw new Error("Forbidden"); }
+    if (!res.ok) throw new Error((data && data.error) || "Ошибка " + res.status);
+    return data;
+  }
+
+  // ---------------------------------------------------------------- вход
+  function logout(msg) {
+    secret = ""; sessionStorage.removeItem("vl_admin");
+    $("panel").classList.add("hid"); $("login").classList.remove("hid");
+    $("login-err").textContent = msg || ""; $("secret").value = "";
+  }
+  $("login-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const val = $("secret").value.trim(); if (!val) return;
+    $("login-err").textContent = "";
+    try {
+      const res = await fetch("/api/admin/stats", { headers: { "X-Admin-Secret": val } });
+      if (res.status === 429) { $("login-err").textContent = "Слишком много попыток. Подожди 10 минут."; return; }
+      if (!res.ok) { $("login-err").textContent = "Неверный секрет"; return; }
+      secret = val; sessionStorage.setItem("vl_admin", val);
+      stats = await res.json(); enter();
+    } catch (err) { $("login-err").textContent = "Сервер недоступен"; }
+  });
+  function enter() { $("login").classList.add("hid"); $("panel").classList.remove("hid"); show("overview"); }
+
+  // ---------------------------------------------------------------- каркас
+  async function refreshStats() {
+    stats = await api("stats");
+    $("demo-badge").classList.toggle("hid", !stats.config.demo);
+    for (const [id, n] of [["cnt-payouts", stats.counts.pending_payouts], ["cnt-gifts", stats.counts.gift_withdrawals]]) {
+      $(id).textContent = n; $(id).classList.toggle("hid", !n);
+    }
+  }
+  async function show(name) {
+    tab = name;
+    document.querySelectorAll("#nav [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === name));
+    const view = $("view");
+    try { await refreshStats(); await VIEWS[name](view); }
+    catch (e) { if (e.message !== "Forbidden") view.innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  }
+  const table = (head, rows, empty) => rows.length
+    ? `<div class="tbl-wrap"><table><thead><tr>${head.map((h) => `<th class="${h.startsWith("#") ? "num" : ""}">${esc(h.replace(/^#/, ""))}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`
+    : `<div class="tbl-wrap"><div class="empty">${esc(empty)}</div></div>`;
+  const seg = (key, opts) => `<div class="seg">${opts.map(([v, l]) => `<button data-filter="${key}" data-v="${v}" class="${filters[key] === v ? "on" : ""}">${l}</button>`).join("")}</div>`;
+  const tile = (lbl, val, unit, sub, cls) => `<div class="tile ${cls || ""}"><div class="lbl">${lbl}</div><div class="val">${val}<small>${unit || ""}</small></div>${sub ? `<div class="sub">${sub}</div>` : ""}</div>`;
+
+  // ---------------------------------------------------------------- разделы
+  const VIEWS = {
+    async overview(v) {
+      const s = stats, r = s.revenue, l = s.liabilities, c = s.counts, d = s.deposits;
+      v.innerHTML = `
+        <h2>Обзор</h2>
+        ${s.config.demo ? `<div class="note">Сейчас <b>демо-режим</b>: VLD и подарки не настоящие, вход по слову «demo». В боевом режиме задай <span class="mono">BOT_TOKEN</span> и <span class="mono">ADMIN_SECRET</span>.</div>` : ""}
+        <h3>Доход платформы</h3>
+        <div class="tiles">
+          ${tile("Сегодня", fmt(r.today), "VLD", "", "accent")}
+          ${tile("За 7 дней", fmt(r.week), "VLD")}
+          ${tile("За всё время", fmt(r.total), "VLD", `раунды ${fmt(r.by_source.rounds)} · переводы ${fmt(r.by_source.transfers)} · выводы ${fmt(r.by_source.payouts)}`)}
+        </div>
+        <h3>Требует внимания</h3>
+        <div class="tiles">
+          ${tile("Заявки на вывод", c.pending_payouts, "", `на ${fmt(l.pending_payouts)} VLD`, c.pending_payouts ? "accent" : "")}
+          ${tile("Подарки ждут выдачи", c.gift_withdrawals, "", "выдаёт бот-хранитель")}
+          ${tile("Депозиты TON в ожидании", d.ton_pending, "", "за последние 2 часа")}
+        </div>
+        <h3>Обязательства перед игроками</h3>
+        <div class="tiles">
+          ${tile("На балансах игроков", fmt(l.user_balances), "VLD", "могут быть выведены")}
+          ${tile("В банках живых раундов", fmt(l.locked_in_live_pools), "VLD", "уйдут организаторам и в комиссию")}
+          ${tile("Резерв на передачу подарков", fmt(l.gift_fee_reserve), "VLD", "оплачено игроками заранее")}
+        </div>
+        <h3>Платформа</h3>
+        <div class="tiles">
+          ${tile("Игроков", fmt(c.users), "", c.banned ? `заблокировано: ${c.banned}` : "")}
+          ${tile("Раундов", fmt(c.pools.live), "идёт", `завершено ${fmt(c.pools.finished)} · отменено ${fmt(c.pools.cancelled)}`)}
+          ${tile("Подарков в эскроу", fmt(c.gifts_in_escrow))}
+          ${tile("Получено TON", (d.ton_nano / 1e9).toFixed(2), "TON", `зачислено ${fmt(d.ton_vld)} VLD · курс 1 TON = ${s.config.vld_per_ton} VLD`)}
+          ${tile("Выплачено игрокам", fmt(d.paid_out_vld), "VLD")}
+        </div>
+        <h3>Сверка депозитов TON</h3>
+        <div class="toolbar"><button class="btn ghost" data-act="ton-scan">Проверить блокчейн сейчас</button>
+          <span class="muted mono">${s.config.ton_wallet ? esc(s.config.ton_wallet) : "кошелёк платформы не задан (TON_WALLET_ADDRESS)"}</span></div>`;
+    },
+
+    async payouts(v) {
+      const { items } = await api("payouts?status=" + filters.payouts);
+      const rows = items.map((r) => {
+        const ton = r.method === "TON", nano = Math.round(r.net_ton * 1e9);
+        const pay = ton ? `<a class="btn sm ghost" href="ton://transfer/${encodeURIComponent(r.destination)}?amount=${nano}&text=${encodeURIComponent("Vloody #" + r.id)}">Открыть кошелёк</a>` : "";
+        const acts = r.status === "pending"
+          ? `${pay}<button class="btn sm ok" data-payout="${r.id}" data-action="paid">Выплачено</button><button class="btn sm ghost" data-payout="${r.id}" data-action="reject">Отклонить</button>` : "";
+        return `<tr>
+          <td class="mono">#${r.id}</td>
+          <td><a class="link" data-user="${r.telegram_id}">${esc(r.username ? "@" + r.username : r.telegram_id)}</a></td>
+          <td>${ton ? "💎 TON" : "⭐ Stars"}</td>
+          <td class="mono"><span class="link" data-copy="${esc(r.destination)}" title="Скопировать">${esc(r.destination)}</span></td>
+          <td class="num">${fmt(r.amount)}</td>
+          <td class="num"><b>${ton ? r.net_ton.toFixed(2) + " TON" : fmt(r.net) + " ⭐"}</b><div class="muted">комиссия ${fmt(r.commission)}</div></td>
+          <td>${pill(r.status, PO[r.status])}</td><td class="muted">${when(r.ts)}</td>
+          <td><div class="acts">${acts}</div></td></tr>`;
+      });
+      v.innerHTML = `<h2>Заявки на вывод</h2>
+        <div class="note"><b>Порядок:</b> сначала отправь деньги игроку, потом нажми «Выплачено». При «Отклонить» вся списанная сумма возвращается на баланс игрока. Перед выплатой открой игрока и проверь, откуда у него VLD.</div>
+        <div class="toolbar">${seg("payouts", [["pending", "Ожидают"], ["paid", "Выплачены"], ["rejected", "Отклонены"], ["all", "Все"]])}</div>
+        ${table(["ID", "Игрок", "Способ", "Куда", "#Списано VLD", "#К выплате", "Статус", "Создана", ""], rows, "Заявок нет")}`;
+    },
+
+    async pools(v) {
+      const { items } = await api("pools?status=" + filters.pools);
+      const rows = items.map((p) => `<tr>
+        <td class="mono">#${p.id}</td><td>${esc(p.emoji)} ${esc(p.title)}</td><td>${MODE[p.mode] || esc(p.mode)}</td>
+        <td><a class="link" data-user="${p.organizer_tid}">${esc(p.organizer)}</a></td>
+        <td class="num">${fmt(p.bank)}</td><td class="num">${p.participants} / ${p.entries}</td>
+        <td>${pill(p.status, PL[p.status])}${p.winner ? ` <span class="muted">→ ${esc(p.winner)}</span>` : ""}</td>
+        <td class="num">${p.status === "finished" ? fmt(p.commission) : "—"}</td>
+        <td class="muted">${p.status === "live" ? (p.ends_ts ? "до " + when(p.ends_ts) : "бессрочно") : when(p.created_ts)}</td>
+        <td><div class="acts">${p.status === "live" ? `<button class="btn sm ghost" data-refund="${p.id}" data-bank="${p.bank}">Отменить с возвратом</button>` : ""}</div></td></tr>`);
+      v.innerHTML = `<h2>Раунды</h2>
+        <div class="note">«Отменить с возвратом» — аварийная мера для спорных раундов: <b>все ставки возвращаются игрокам</b>, подарок — организатору, комиссия не берётся. Результат честного раунда изменить нельзя.</div>
+        <div class="toolbar">${seg("pools", [["live", "Идут"], ["finished", "Завершены"], ["cancelled", "Отменены"], ["all", "Все"]])}</div>
+        ${table(["ID", "Подарок", "Режим", "Организатор", "#Банк VLD", "#Игроков / ставок", "Статус", "#Комиссия", "Время", ""], rows, "Раундов нет")}`;
+    },
+
+    async users(v) {
+      const { items } = await api("users?q=" + encodeURIComponent(filters.users));
+      const rows = items.map((u) => `<tr>
+        <td><a class="link" data-user="${u.telegram_id}">${esc(u.name)}</a>${u.banned ? " " + pill("banned", "бан") : ""}</td>
+        <td class="mono">${u.telegram_id}</td><td class="num"><b>${fmt(u.balance)}</b></td>
+        <td class="num">${fmt(u.staked)}</td><td class="num">${fmt(u.earned)}</td><td class="num">${u.level}</td>
+        <td class="muted">${when(u.registered_ts)}</td>
+        <td><div class="acts"><button class="btn sm ghost" data-ban="${u.telegram_id}" data-action="${u.banned ? "unban" : "ban"}">${u.banned ? "Разблокировать" : "Заблокировать"}</button></div></td></tr>`);
+      v.innerHTML = `<h2>Игроки</h2>
+        <form class="toolbar" id="user-search"><input class="inp" id="user-q" placeholder="Telegram ID или @username" value="${esc(filters.users)}">
+          <button class="btn ghost" type="submit">Найти</button><span class="muted">показаны первые 50 по балансу</span></form>
+        ${table(["Игрок", "Telegram ID", "#Баланс VLD", "#Поставил", "#Получил как организатор", "#Уровень", "Регистрация", ""], rows, "Никого не найдено")}`;
+      $("user-search").addEventListener("submit", (e) => { e.preventDefault(); filters.users = $("user-q").value.trim(); show("users"); });
+    },
+
+    async gifts(v) {
+      const { items } = await api("gifts?status=" + filters.gifts);
+      const rows = items.map((g) => `<tr>
+        <td class="mono">#${g.id}</td><td>${esc(g.emoji)} ${esc(g.name)}</td>
+        <td><a class="link" data-user="${g.owner_tid}">${esc(g.owner)}</a></td>
+        <td>${pill(g.status, GS[g.status])}</td><td>${g.source === "win" ? "выигран" : "внесён"}</td>
+        <td class="num">${g.transfer_fee || "—"}</td><td class="mono muted">${esc(g.tg_gift_id || "демо")}</td>
+        <td class="muted">${when(g.created_ts)}</td></tr>`);
+      v.innerHTML = `<h2>Подарки</h2>
+        <div class="note">Подарки выдаёт <b>бот-хранитель</b> автоматически. Если заявка висит дольше нескольких минут — проверь, что бот запущен, бизнес-аккаунт подключён и на нём хватает звёзд на передачу.</div>
+        <div class="toolbar">${seg("gifts", [["withdraw_requested", "Ждут выдачи"], ["held", "В инвентарях"], ["locked", "В раундах"], ["all", "Все"]])}</div>
+        ${table(["ID", "Подарок", "Владелец", "Статус", "Происхождение", "#Плата за передачу", "ID в Telegram", "Получен"], rows, "Подарков нет")}`;
+    },
+
+    async revenue(v) {
+      const d = await api("revenue");
+      const rows = d.items.map((r) => `<tr><td class="muted">${when(r.ts)}</td><td>${esc(r.title)}</td><td class="num pos"><b>+${fmt(r.amount)}</b></td></tr>`);
+      const deps = d.ton_deposits.map((t) => `<tr><td class="muted">${when(t.ts)}</td><td>${esc(t.user)}</td>
+        <td class="num">${t.ton.toFixed(2)} TON</td><td class="num">${fmt(t.vld)}</td><td class="mono muted">${esc((t.tx_hash || "").slice(0, 22))}…</td></tr>`);
+      v.innerHTML = `<h2>Доход</h2>
+        <div class="tiles">${tile("Комиссия раундов", fmt(stats.revenue.by_source.rounds), "VLD")}${tile("Комиссия переводов", fmt(stats.revenue.by_source.transfers), "VLD")}${tile("Комиссия выводов", fmt(stats.revenue.by_source.payouts), "VLD")}${tile("Итого", fmt(stats.revenue.total), "VLD", "", "accent")}</div>
+        <h3>Последние начисления</h3>${table(["Когда", "Источник", "#VLD"], rows, "Дохода пока нет")}
+        <h3>Депозиты TON</h3>${table(["Когда", "Игрок", "#Пришло", "#Зачислено VLD", "Транзакция"], deps, "Депозитов TON пока нет")}`;
+    },
+  };
+
+  // ---------------------------------------------------------------- карточка игрока
+  async function openUser(tid, body) {
+    let u;
+    try { u = await api("users/" + tid, body); } catch (e) { toast(e.message); return; }
+    $("drawer-card").innerHTML = `
+      <div class="drawer-head"><div><h2 style="margin:0">${esc(u.name)}</h2><span class="mono muted">ID ${u.telegram_id}</span>${u.banned ? " " + pill("banned", "заблокирован") : ""}</div>
+        <button class="btn sm ghost" data-act="drawer-close">Закрыть</button></div>
+      <div class="kv"><span>Баланс</span><b>${fmt(u.balance)} VLD</b>
+        <span>Пригласил</span><span>${u.referred_by ? `<a class="link" data-user="${u.referred_by}">ID ${u.referred_by}</a>` : "—"}</span>
+        <span>Реферальный доход</span><span>${fmt(u.referral_earned)} VLD</span></div>
+      <button class="btn sm ghost" data-ban="${u.telegram_id}" data-action="${u.banned ? "unban" : "ban"}" data-drawer="1">${u.banned ? "Разблокировать" : "Заблокировать"}</button>
+      <h3>Подарки</h3>
+      ${u.gifts.length ? u.gifts.map((g) => `<div style="padding:4px 0">${esc(g.emoji)} ${esc(g.name)} ${pill(g.status, GS[g.status])}</div>`).join("") : `<div class="muted">нет</div>`}
+      <h3>Последние операции</h3>
+      ${u.ledger.length ? `<div class="tbl-wrap"><table><tbody>${u.ledger.map((r) => `<tr><td class="muted">${when(r.ts)}</td><td>${esc(r.title)}</td><td class="num ${r.amount >= 0 ? "pos" : "neg"}"><b>${r.amount >= 0 ? "+" : "−"}${fmt(Math.abs(r.amount))}</b></td></tr>`).join("")}</tbody></table></div>` : `<div class="muted">операций нет</div>`}`;
+    $("drawer").classList.remove("hid");
+  }
+
+  // ---------------------------------------------------------------- события
+  document.addEventListener("click", async (e) => {
+    const t = (sel) => e.target.closest(sel);
+    let el;
+    if (e.target.id === "drawer") return $("drawer").classList.add("hid");
+    if ((el = t("[data-tab]"))) return show(el.dataset.tab);
+    if ((el = t("[data-filter]"))) { filters[el.dataset.filter] = el.dataset.v; return show(tab); }
+    if ((el = t("[data-user]"))) return openUser(el.dataset.user);
+    if ((el = t("[data-copy]"))) { try { await navigator.clipboard.writeText(el.dataset.copy); toast("Скопировано"); } catch (err) { toast(el.dataset.copy); } return; }
+    if ((el = t("[data-act]"))) {
+      const a = el.dataset.act;
+      if (a === "logout") return logout();
+      if (a === "drawer-close") return $("drawer").classList.add("hid");
+      if (a === "ton-scan") {
+        el.disabled = true;
+        try { const r = await api("ton/scan", {}); toast(r.credited ? `Зачислено депозитов: ${r.credited}` : "Новых переводов нет"); show(tab); }
+        catch (err) { toast(err.message); el.disabled = false; }
+      }
+      return;
+    }
+    if ((el = t("[data-payout]"))) {
+      const paid = el.dataset.action === "paid";
+      if (!confirm(paid ? `Заявка #${el.dataset.payout}: деньги уже отправлены игроку? Отменить это будет нельзя.`
+                        : `Отклонить заявку #${el.dataset.payout}? Сумма вернётся на баланс игрока.`)) return;
+      try { await api("payouts/" + el.dataset.payout, { action: el.dataset.action }); toast(paid ? "Отмечено как выплаченное" : "Заявка отклонена, сумма возвращена"); show(tab); }
+      catch (err) { toast(err.message); }
+      return;
+    }
+    if ((el = t("[data-refund]"))) {
+      if (!confirm(`Отменить раунд #${el.dataset.refund}? Игрокам вернётся ${fmt(el.dataset.bank)} VLD, подарок вернётся организатору. Отменить это будет нельзя.`)) return;
+      try { const r = await api(`pools/${el.dataset.refund}/refund`, {}); toast(`Раунд отменён, возвращено ${fmt(r.refunded)} VLD`); show(tab); }
+      catch (err) { toast(err.message); }
+      return;
+    }
+    if ((el = t("[data-ban]"))) {
+      const ban = el.dataset.action === "ban";
+      if (ban && !confirm(`Заблокировать игрока ${el.dataset.ban}? Он не сможет ставить, создавать раунды, переводить и выводить.`)) return;
+      if (el.dataset.drawer) await openUser(el.dataset.ban, { action: el.dataset.action });
+      else { try { await api("users/" + el.dataset.ban, { action: el.dataset.action }); } catch (err) { toast(err.message); return; } }
+      toast(ban ? "Игрок заблокирован" : "Игрок разблокирован");
+      if (tab === "users") show("users");
+    }
+  });
+
+  if (secret) refreshStats().then(enter).catch(() => {});
+})();
+</script>
+</body>
+</html>

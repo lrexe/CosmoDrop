@@ -1,28 +1,86 @@
-/* Игры: апгрейд · контракты · колесо фортуны */
+/* Игры: хаб + апгрейд · контракты · колесо фортуны (аркада — в arcade.js) */
 (function () {
   "use strict";
   const CD = window.CD, API = CD.API, fmt = CD.fmt, RARITY = CD.RARITY;
   const rarLabel = (r) => (RARITY[r] || {}).label || r;
 
   const root = document.getElementById("game-root");
-  const seg = document.getElementById("game-seg");
-  let tab = "upgrade";
+  const head = document.getElementById("game-head");
+  const Arcade = window.CDArcade || {};
   let inventory = [];
   let busy = false;
 
-  seg.addEventListener("click", (e) => {
-    const b = e.target.closest("[data-tab]"); if (!b) return;
-    tab = b.dataset.tab;
-    seg.querySelectorAll("button").forEach((x) => x.classList.toggle("active", x === b));
-    CD.sound.play("click");
+  // каталог игр: порядок = порядок карточек в хабе
+  const GAMES = [
+    { key: "crash",    icon: "🚀", name: "Ракета",    desc: "Забери до взрыва",          tag: "до ×100", hue: "#f5b544", hot: true },
+    { key: "mines",    icon: "💣", name: "Мины",      desc: "Ищи кристаллы на поле 5×5", tag: "до ×24",  hue: "#30c48d", hot: true },
+    { key: "dice",     icon: "🎲", name: "Кости",     desc: "Сам выбираешь шанс",        tag: "до ×19",  hue: "#3390ec", hot: true },
+    { key: "upgrade",  icon: "🔼", name: "Апгрейд",   desc: "Рискни подарком",           tag: "до ×10",  hue: "#a76bf3" },
+    { key: "contract", icon: "📄", name: "Контракты", desc: "Объедини 2–10 подарков",    tag: "trade-up", hue: "#e269c9" },
+    { key: "wheel",    icon: "🎡", name: "Колесо",    desc: "Бесплатно раз в 6 часов",   tag: "free",    hue: "#2aabee" },
+  ];
+  const byKey = (k) => GAMES.find((g) => g.key === k);
+  let tab = byKey(location.hash.slice(1)) ? location.hash.slice(1) : null;
+  let cleanup = null;
+
+  function go(key) {
+    if (cleanup) { try { cleanup(); } catch (e) {} cleanup = null; }
+    tab = key;
+    history.replaceState(null, "", key ? "#" + key : location.pathname);
     render();
+    document.querySelector(".content").scrollTo({ top: 0 });
+  }
+  window.addEventListener("hashchange", () => {
+    const k = location.hash.slice(1);
+    if ((byKey(k) ? k : null) !== tab) go(byKey(k) ? k : null);
   });
+
+  function renderHub() {
+    head.innerHTML = `<h1>Мини-игры</h1><p>Шесть способов умножить звёзды: от ракеты до колеса фортуны.</p>`;
+    root.innerHTML = `
+      <div class="game-panel"><div class="hub-grid">
+        ${GAMES.map((g) => `
+          <button class="hub-card" data-game="${g.key}" style="--hue:${g.hue}" type="button">
+            ${g.hot ? `<span class="hub-new">NEW</span>` : ""}
+            <span class="hub-icon">${g.icon}</span>
+            <span class="hub-name">${g.name}</span>
+            <span class="hub-desc">${g.desc}</span>
+            <span class="hub-tag">${g.tag}</span>
+          </button>`).join("")}
+      </div>
+      <div class="section-head"><h3>Последние ставки игроков</h3></div>
+      <div class="bets" id="hubFeed"><div class="skeleton" style="height:40px"></div></div></div>`;
+    root.querySelectorAll("[data-game]").forEach((b) =>
+      b.addEventListener("click", () => { CD.sound.play("click"); CD.haptic("light"); go(b.dataset.game); }));
+
+    API.arcadeHistory(null, 10, "global").then((rows) => {
+      const feed = root.querySelector("#hubFeed"); if (!feed) return;
+      if (!rows.length) { feed.innerHTML = `<div class="empty" style="padding:14px">Стань первым — сделай ставку!</div>`; return; }
+      feed.innerHTML = rows.map((r) => {
+        const g = byKey(r.game) || { icon: "🎮", name: r.game };
+        const won = r.state === "won";
+        return `<div class="bet-line ${won ? "won" : "lost"}">
+          <span class="bl-game">${r.avatar} ${r.name}</span>
+          <span class="bl-bet">${g.icon} ${g.name}</span>
+          <span class="bl-mult">${won ? "×" + r.multiplier.toFixed(2) : "—"}</span>
+          <span class="bl-profit">${r.profit >= 0 ? "+" : "−"}${fmt(Math.abs(r.profit))}</span>
+        </div>`;
+      }).join("");
+    }).catch(() => {});
+  }
 
   async function refreshInventory() {
     try { inventory = (await API.inventory()).items; } catch (e) { inventory = []; }
   }
 
   async function render() {
+    if (!tab) return renderHub();
+    const g = byKey(tab);
+    head.innerHTML = `
+      <button class="back-btn" id="gameBack" type="button">‹ Все игры</button>
+      <h1>${g.icon} ${g.name}</h1><p>${g.desc}</p>`;
+    head.querySelector("#gameBack").addEventListener("click", () => { CD.sound.play("click"); go(null); });
+    if (Arcade[tab]) { cleanup = Arcade[tab](root); return; }
     if (tab === "upgrade") return renderUpgrade();
     if (tab === "contract") return renderContract();
     if (tab === "wheel") return renderWheel();

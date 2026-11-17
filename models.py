@@ -1,5 +1,5 @@
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from datetime import datetime, timezone
 
 db = SQLAlchemy()
 
@@ -227,3 +227,185 @@ class PromoRedemption(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     code = db.Column(db.String(32), nullable=False)
     redeemed_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class GameRound(db.Model):
+    """Раунд аркадной игры (ракета / мины / кости): ставка, исход, состояние."""
+    __tablename__ = "game_rounds"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    game = db.Column(db.String(16), nullable=False, index=True)     # crash | mines | dice
+    bet = db.Column(db.Integer, nullable=False)
+    payout = db.Column(db.Integer, default=0)
+    multiplier = db.Column(db.Float, default=0)
+    state = db.Column(db.String(10), default="active", index=True)  # active | won | lost
+    data = db.Column(db.Text, default="{}")                         # JSON: скрытое состояние раунда
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    finished_at = db.Column(db.DateTime)
+
+    user = db.relationship("User", lazy=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id, "game": self.game, "bet": self.bet, "payout": self.payout or 0,
+            "multiplier": round(self.multiplier or 0, 2), "state": self.state,
+            "profit": (self.payout or 0) - self.bet,
+            "name": (self.user.first_name or self.user.username or "Космонавт") if self.user else "Космонавт",
+            "avatar": self.user.avatar if self.user else "🧑‍🚀",
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ===========================================================================
+# VLOODY — PvP-розыгрыши NFT-подарков
+# ===========================================================================
+
+class GiftItem(db.Model):
+    """NFT-подарок на хранении у платформы (эскроу).
+
+    Подарок появляется здесь только после того, как бот-хранитель реально
+    получил его в Telegram. Раунд можно создать только из такого подарка,
+    поэтому организатор не может «разыграть» то, чего у платформы нет.
+    """
+    __tablename__ = "gift_items"
+
+    id = db.Column(db.Integer, primary_key=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    name = db.Column(db.String(60), nullable=False)
+    emoji = db.Column(db.String(8), default="🎁")
+    art = db.Column(db.String(4), default="a1")
+    tg_gift_id = db.Column(db.String(64), unique=True)           # id подарка в Telegram
+    # held — лежит в инвентаре | locked — в активном раунде
+    # withdraw_requested — владелец запросил выдачу | withdrawn — выдан
+    status = db.Column(db.String(20), default="held", index=True)
+    source = db.Column(db.String(10), default="deposit")          # deposit | win
+    # сколько звёзд Telegram берёт за передачу этого подарка — оплачивает тот, кто выводит
+    transfer_fee = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {"id": self.id, "name": self.name, "emoji": self.emoji, "art": self.art,
+                "status": self.status, "source": self.source,
+                "transfer_fee": self.transfer_fee or 0}
+
+
+class Pool(db.Model):
+    """Раунд розыгрыша: wheel (колесо) | vault (сейф) | auction (слепой аукцион)."""
+    __tablename__ = "pools"
+
+    id = db.Column(db.Integer, primary_key=True)
+    organizer_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    gift_id = db.Column(db.Integer, db.ForeignKey("gift_items.id"), nullable=False)
+    mode = db.Column(db.String(10), nullable=False)
+    min_stake = db.Column(db.Integer, nullable=False)
+    status = db.Column(db.String(10), default="live", index=True)   # live | finished | cancelled
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    ends_at = db.Column(db.DateTime, index=True)                    # None — бессрочно (сейф)
+    finished_at = db.Column(db.DateTime)
+
+    bank = db.Column(db.Integer, default=0)                         # сумма всех ставок
+    winner_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    commission = db.Column(db.Integer, default=0)                   # доход платформы
+    organizer_payout = db.Column(db.Integer, default=0)
+
+    # честность: seed_hash публикуется при создании, seed — после завершения
+    seed = db.Column(db.String(64), nullable=False)
+    seed_hash = db.Column(db.String(64), nullable=False)
+    cfg = db.Column(db.Text, default="{}")                          # JSON: настройки режима
+    result = db.Column(db.Text, default="{}")                       # JSON: данные для проверки
+
+    organizer = db.relationship("User", foreign_keys=[organizer_id], lazy=True)
+    winner = db.relationship("User", foreign_keys=[winner_id], lazy=True)
+    gift = db.relationship("GiftItem", lazy=True)
+
+
+class PoolEntry(db.Model):
+    """Ставка игрока в раунде (в сейфе — попытка с числом)."""
+    __tablename__ = "pool_entries"
+
+    id = db.Column(db.Integer, primary_key=True)
+    pool_id = db.Column(db.Integer, db.ForeignKey("pools.id"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    amount = db.Column(db.Integer, nullable=False)
+    number = db.Column(db.Integer)                                  # только для сейфа
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+    user = db.relationship("User", lazy=True)
+    __table_args__ = (db.UniqueConstraint("pool_id", "number", name="uq_pool_number"),)
+
+
+class LedgerTx(db.Model):
+    """Журнал движения звёзд. user_id = NULL — доход платформы."""
+    __tablename__ = "ledger"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), index=True)
+    kind = db.Column(db.String(20), nullable=False, index=True)
+    amount = db.Column(db.Integer, nullable=False)                  # + зачисление, − списание
+    title = db.Column(db.String(120), default="")
+    ref = db.Column(db.String(128), unique=True)                    # id внешнего платежа — от дублей
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+    def to_dict(self):
+        return {"id": self.id, "kind": self.kind, "amount": self.amount, "title": self.title,
+                "ts": int(self.created_at.replace(tzinfo=timezone.utc).timestamp())}
+
+
+class PayoutRequest(db.Model):
+    """Заявка на вывод. Сумма списывается сразу, выплату подтверждает администратор."""
+    __tablename__ = "payout_requests"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    method = db.Column(db.String(10), default="STARS")
+    destination = db.Column(db.String(128), nullable=False)
+    amount = db.Column(db.Integer, nullable=False)                  # списано с баланса
+    commission = db.Column(db.Integer, nullable=False)
+    net = db.Column(db.Integer, nullable=False)                     # к выплате
+    status = db.Column(db.String(10), default="pending", index=True)  # pending | paid | rejected
+    net_nano = db.Column(db.BigInteger, default=0)                  # для TON: к выплате в nanoTON (курс на момент заявки)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    processed_at = db.Column(db.DateTime)
+
+    user = db.relationship("User", lazy=True)
+
+    def to_dict(self, admin=False):
+        d = {"id": self.id, "method": self.method, "destination": self.destination,
+             "amount": self.amount, "commission": self.commission, "net": self.net,
+             "status": self.status, "net_ton": (self.net_nano or 0) / 1e9,
+             "ts": int(self.created_at.replace(tzinfo=timezone.utc).timestamp())}
+        if admin and self.user:
+            d["telegram_id"] = self.user.telegram_id
+            d["username"] = self.user.username
+        return d
+
+
+class TonDeposit(db.Model):
+    """Намерение пополнить баланс в TON. Перевод ищется в блокчейне по уникальному комментарию."""
+    __tablename__ = "ton_deposits"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    comment = db.Column(db.String(32), unique=True, nullable=False, index=True)
+    status = db.Column(db.String(10), default="pending", index=True)   # pending | credited
+    amount_nano = db.Column(db.BigInteger, default=0)                   # сколько реально пришло
+    vld = db.Column(db.Integer, default=0)                              # сколько зачислено
+    tx_hash = db.Column(db.String(128), unique=True)                    # защита от повторного зачисления
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    credited_at = db.Column(db.DateTime)
+
+
+def ensure_columns():
+    """Мини-миграция: добавляет в существующие таблицы колонки, появившиеся позже."""
+    added = {"gift_items": [("transfer_fee", "INTEGER DEFAULT 0")],
+             "payout_requests": [("net_nano", "BIGINT DEFAULT 0")]}
+    inspector = db.inspect(db.engine)
+    for table, columns in added.items():
+        if not inspector.has_table(table):
+            continue
+        existing = {c["name"] for c in inspector.get_columns(table)}
+        for name, ddl in columns:
+            if name not in existing:
+                db.session.execute(db.text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+    db.session.commit()

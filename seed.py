@@ -10,6 +10,7 @@ Seed-скрипт для CosmoDrop.
 Идемпотентно: пересоздаёт кейсы, историю и инвентарь, обновляет статы игроков.
 """
 
+import sys
 from datetime import datetime, timedelta
 
 from app import app
@@ -18,6 +19,7 @@ from models import (
     DailyProgress, Achievement, PromoCode, PromoRedemption,
 )
 from bot.engine import level_from_xp
+from bot.vloody_seed import seed_vloody
 
 MAIN_TELEGRAM_ID = 111222333
 
@@ -191,7 +193,11 @@ def seed():
 
         db.session.commit()
 
+        # --- Vloody: подарки в эскроу и раунды розыгрышей ---
+        pools = seed_vloody(MAIN_TELEGRAM_ID)
+
         # --- отчёт ---
+        print(f"   Vloody: раундов {pools}")
         print("✅ База наполнена.")
         print(f"   Кейсов: {Case.query.count()} · Призов: {CasePrize.query.count()}")
         print(f"   Игроков: {User.query.count()} · История: {CaseHistory.query.count()} · Промокодов: {PromoCode.query.count()}")
@@ -205,4 +211,7 @@ def seed():
 
 
 if __name__ == "__main__":
+    # консоль Windows (cp1251) не умеет печатать эмодзи из отчёта
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     seed()
