@@ -84,7 +84,9 @@ def create_app():
 
     @app.route("/tonconnect-manifest.json")
     def tonconnect_manifest():
-        base = request.url_root.rstrip("/")
+        # за туннелем/прокси TLS завершается снаружи, и Flask видит http:// —
+        # кошельку нужен настоящий публичный адрес, поэтому берём PUBLIC_URL
+        base = (os.getenv("PUBLIC_URL") or request.url_root).rstrip("/")
         return jsonify({"url": base, "name": "Vloody",
                         "iconUrl": base + "/static/img/vloody-icon.png"})
 

@@ -56,7 +56,10 @@ def run(argv):
 env_path = os.path.join(tempfile.mkdtemp(), ".env")
 open(env_path, "w", encoding="utf-8").write("# комментарий\nRELAY_BOT_TOKEN=777:RELAY\nPUBLIC_URL=https://old.example.com\n")
 SM.ENV_PATH = env_path
-saved = {k: os.environ.pop(k) for k in ("SECRET_KEY", "TELEGRAM_WEBHOOK_SECRET") if k in os.environ}
+# SM.main() подгружает настоящий .env разработчика (load_env с setdefault) и тогда не создаёт
+# секреты, которые там уже есть, — тест зависел от содержимого чужого .env. Изолируем его.
+SM.load_env = lambda *a, **k: True
+saved ={k: os.environ.pop(k) for k in ("SECRET_KEY", "TELEGRAM_WEBHOOK_SECRET") if k in os.environ}
 os.environ.pop("ADMIN_SECRET", None)
 
 code, msg = run(["http://vloody.example.com"])
