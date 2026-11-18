@@ -54,7 +54,11 @@
   color: var(--text);
 }
 .vl-seg-wide { display: flex; width: 100%; box-sizing: border-box; }
-.vl-seg-wide .vl-seg-btn { flex: 1 1 0; min-width: 0; padding: 0 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vl-seg-wide .vl-seg-btn { flex: 1 1 auto; min-width: 0; padding: 0 8px; overflow: hidden; text-overflow: clip; white-space: nowrap; }
+/* phone: четыре вкладки профиля должны помещаться целиком, без обрезки справа */
+.vl-pf-tabs { max-width: 100%; min-width: 0; }
+.vl-pf-tabs .vl-seg-btn { font-size: var(--fs-xs); padding: 0 6px; }
+@media (min-width: 400px) { .vl-pf-tabs .vl-seg-btn { font-size: var(--fs-sm); padding: 0 8px; } }
 .vl-scr .vl-seg-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; }
 .vl-scr .vl-seg-btn .ic { width: 16px; height: 16px; }
 .vl-scr .vl-seg-btn.on { box-shadow: inset 0 0 0 1px var(--line-strong); }
@@ -590,7 +594,9 @@
 .vl-tx-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .vl-tx-n { font: 600 var(--fs-sm)/1.3 var(--font); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vl-tx-n.num { font-family: var(--vl-mono); }
-.vl-tx-s { display: flex; align-items: center; gap: 6px; min-width: 0; font: 500 var(--fs-xs)/1.3 var(--font); color: var(--muted); white-space: nowrap; }
+.vl-tx-s { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 8px; min-width: 0; font: 500 var(--fs-xs)/1.3 var(--font); color: var(--muted); }
+.vl-tx-s .vl-st { flex: none; white-space: nowrap; }
+.vl-tx-r .vl-tx-s { white-space: nowrap; justify-content: flex-end; }
 .vl-tx-r { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
 .vl-tx-v { flex: none; font-weight: 700; font-size: var(--fs-md); color: var(--text); white-space: nowrap; }
 .vl-tx-v.is-pos { color: var(--success); }

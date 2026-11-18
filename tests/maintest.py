@@ -109,6 +109,15 @@ check("/start с кодом: код передаётся в приложение
 c.post("/api/telegram_payment", headers=HOOK, json=start('/start x&admin=1"><script>'))
 check("подозрительный параметр отброшен",
       sent[-1][1]["reply_markup"]["inline_keyboard"][0][0]["web_app"]["url"] == "https://vloody.example.com/")
+c.post("/api/telegram_payment", headers=HOOK, json=start("/help"))
+check("/help и /fair отвечают справкой с кнопкой приложения",
+      "VLD" in sent[-1][1]["text"] and sent[-1][1]["reply_markup"]["inline_keyboard"][0][0]["web_app"])
+c.post("/api/telegram_payment", headers=HOOK, json=start("/fair"))
+check("/fair объясняет честность", "хэш" in sent[-1][1]["text"])
+import bot.relay_texts as RT
+check("бот-хранитель: тексты для новичков называют аккаунт и шаги",
+      "@keeper" in RT.reply_for("start", "keeper") and "инвентаре" in RT.reply_for("deposit", "keeper")
+      and RT.reply_for("nope", "keeper") is None and len(RT.reply_for("help", None)) > 800)
 n = len(sent)
 c.post("/api/telegram_payment", headers=HOOK, json=start("/start", chat="group"))
 c.post("/api/telegram_payment", headers=HOOK, json=start("привет"))

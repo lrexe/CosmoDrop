@@ -375,21 +375,43 @@ body {
   transition: opacity .15s var(--ease);
 }
 #splash.out { opacity: 0; pointer-events: none; }
+.vl-vault { width: 132px; height: 132px; margin-bottom: 22px; overflow: visible; }
+.vl-vault-ring { fill: none; stroke: var(--line-strong); stroke-width: 2; }
+.vl-vault-ring2 { fill: none; stroke: var(--accent-text); stroke-width: 3; stroke-dasharray: 54 18; stroke-linecap: round; }
+.vl-vault-pip { fill: var(--accent-text); }
+.vl-vault-ticks line { stroke: var(--muted); stroke-width: 2; stroke-linecap: round; }
+.vl-vault-disc { fill: var(--surface-2); stroke: var(--line-strong); stroke-width: 2; transform-origin: 80px 80px; }
+.vl-vault-check { fill: none; stroke: var(--accent-text); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 60; stroke-dashoffset: 60; }
+.vl-vault-outer, .vl-vault-mid, .vl-vault-core { transform-origin: 80px 80px; }
+/* три щелчка диска: вправо — влево — вправо, затем замок открывается */
+.vl-vault-outer { animation: vl-dial-a 1.1s cubic-bezier(.65,0,.25,1) .05s both; }
+.vl-vault-mid { animation: vl-dial-b 1.1s cubic-bezier(.65,0,.25,1) .05s both; }
+.vl-vault-core { animation: vl-core 1.7s var(--ease) both; }
+.vl-vault-check { animation: vl-check .35s var(--ease) 1s both; }
+@keyframes vl-dial-a { 0% { transform: rotate(-200deg); opacity: 0; } 15% { opacity: 1; } 35% { transform: rotate(-60deg); } 60% { transform: rotate(40deg); } 100% { transform: rotate(0); } }
+@keyframes vl-dial-b { 0% { transform: rotate(240deg); } 35% { transform: rotate(70deg); } 60% { transform: rotate(-50deg); } 100% { transform: rotate(0); } }
+@keyframes vl-core { 0%, 55% { transform: scale(.92); } 70% { transform: scale(1.08); } 100% { transform: scale(1); } }
+@keyframes vl-check { to { stroke-dashoffset: 0; } }
 .vl-splash-mark {
+  display: flex;
   font: 700 40px/1 var(--font);
   letter-spacing: -1px;
   color: var(--text);
-  animation: vl-splash-in .5s var(--ease) .1s both;
 }
-.vl-splash-mark i { font-style: normal; color: var(--accent-text); }
+.vl-splash-mark span, .vl-splash-mark i { font-style: normal; display: inline-block; animation: vl-splash-in .45s var(--ease) both; }
+.vl-splash-mark i { color: var(--accent-text); }
+.vl-splash-mark > :nth-child(1) { animation-delay: 1.0s; } .vl-splash-mark > :nth-child(2) { animation-delay: 1.05s; }
+.vl-splash-mark > :nth-child(3) { animation-delay: 1.1s; } .vl-splash-mark > :nth-child(4) { animation-delay: 1.15s; }
+.vl-splash-mark > :nth-child(5) { animation-delay: 1.2s; } .vl-splash-mark > :nth-child(6) { animation-delay: 1.25s; }
 .vl-splash-sub {
   margin-top: 12px;
   font: 500 var(--fs-sm)/1.3 var(--font);
   color: var(--muted);
   text-align: center;
-  animation: vl-splash-in .5s var(--ease) .3s both;
+  animation: vl-splash-in .5s var(--ease) 1.4s both;
 }
-@keyframes vl-splash-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes vl-splash-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
 /* ── toast: one short status line above the tab bar (JS: textContent + .on for 2.6 s) ── */
 #toast {
@@ -422,5 +444,6 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   #app, #tabbar .nb, #tabbar .nb::before, .nb-fab, .vl-side-link, #splash, #toast, #toast.on { transition: none; }
-  .vl-splash-mark, .vl-splash-sub { animation: none; }
+  .vl-splash-mark span, .vl-splash-mark i, .vl-splash-sub, .vl-vault-outer, .vl-vault-mid, .vl-vault-core { animation: none; }
+  .vl-vault-check { animation: none; stroke-dashoffset: 0; }
 }

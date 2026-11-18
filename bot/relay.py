@@ -32,6 +32,8 @@ import time
 import urllib.error
 import urllib.request
 
+from bot import relay_texts as RT
+
 log = logging.getLogger("relay")
 
 MAX_ATTEMPTS = 5            # после стольких неудач подарок возвращается в инвентарь
@@ -60,7 +62,7 @@ class Relay:
         self.backend = backend.rstrip("/")
         self.api_base = api_base.rstrip("/")
         self.state_path = state_path
-        self.state = {"offset": 0, "connection_id": None, "owner_id": None,
+        self.state = {"offset": 0, "connection_id": None, "owner_id": None, "owner_username": None,
                       "started_at": int(time.time()), "seen": [], "attempts": {}, "skipped": []}
         self._load()
 
@@ -127,14 +129,50 @@ class Relay:
             if bm and (bm.get("unique_gift") or bm.get("gift")):
                 fresh_gift = True
             msg = u.get("message")
-            if msg and (msg.get("text") or "").startswith("/start"):
-                self.notify(msg["chat"]["id"],
-                            "Я храню подарки для розыгрышей Vloody.\n\n"
-                            "Чтобы внести подарок, передай уникальный (NFT) подарок аккаунту-хранителю — "
-                            "через минуту он появится в твоём инвентаре в приложении.")
+            if msg and (msg.get("chat") or {}).get("type") == "private":
+                self._on_command(msg)
         if updates:
             self._save()
         return fresh_gift
+
+    def _on_command(self, msg):
+        """/start, /help, /deposit, /withdraw, /rules — инструкции для новичков."""
+        text = (msg.get("text") or "").strip()
+        if not text.startswith("/"):
+            return
+        cmd = text.split()[0][1:].split("@")[0].lower()
+        owner = self.state.get("owner_username")
+        body = RT.reply_for(cmd, owner)
+        if body is None:
+            return
+        buttons = []
+        if owner and cmd in ("start", "deposit", "help"):
+            buttons.append({"text": "🎁 Открыть чат хранителя", "url": f"https://t.me/{owner}"})
+        app_bot = os.getenv("BOT_USERNAME", "").strip()
+        if app_bot:
+            buttons.append({"text": "🎡 Открыть Vloody", "url": f"https://t.me/{app_bot}"})
+        extra = {"reply_markup": {"inline_keyboard": [[b] for b in buttons]}} if buttons else {}
+        try:
+            self.tg("sendMessage", chat_id=msg["chat"]["id"], text=body, **extra)
+        except ApiError:
+            pass
+
+    def setup_profile(self):
+        """Команды и описание бота — чтобы новичок сразу видел, что делать. Сбой не критичен."""
+        for method, params in (("setMyCommands", {"commands": RT.COMMANDS}),
+                               ("setMyShortDescription", {"short_description": RT.SHORT_DESC}),
+                               ("setMyDescription", {"description": RT.LONG_DESC})):
+            try:
+                self.tg(method, **params)
+            except ApiError as e:
+                log.warning("%s: %s", method, e)
+        if self.state.get("connection_id") and not self.state.get("owner_username"):
+            try:
+                conn = self.tg("getBusinessConnection", business_connection_id=self.state["connection_id"])
+                self.state["owner_username"] = (conn.get("user") or {}).get("username")
+                self._save()
+            except ApiError as e:
+                log.warning("getBusinessConnection: %s", e)
 
     def _on_connection(self, conn):
         rights = conn.get("rights") or {}
@@ -145,6 +183,8 @@ class Relay:
             return
         self.state["connection_id"] = conn["id"]
         self.state["owner_id"] = (conn.get("user") or {}).get("id")
+        self.state["owner_username"] = ((conn.get("user") or {}).get("username")
+                                        or self.state.get("owner_username"))
         log.info("Подключён бизнес-аккаунт %s (connection %s)", self.state["owner_id"], conn["id"])
         for right, why in (("can_view_gifts_and_stars", "видеть подарки"),
                            ("can_transfer_and_upgrade_gifts", "передавать подарки"),
@@ -305,6 +345,7 @@ class Relay:
     def run(self, sync_every=15):
         me = self.tg("getMe")
         log.info("Бот-хранитель @%s запущен, сервер %s", me.get("username"), self.backend)
+        self.setup_profile()
         if not self.state["connection_id"]:
             log.warning("Бизнес-аккаунт ещё не подключён. Открой в Telegram: Настройки → "
                         "Telegram для бизнеса → Чат-боты → укажи @%s и выдай права на подарки.",

@@ -827,24 +827,62 @@ def ton_demo_pay():
 
 
 WELCOME_TEXT = (
-    "🩸 Добро пожаловать в Vloody!\n\n"
-    "Честные розыгрыши NFT-подарков между игроками: колесо, кибер-сейф и слепой аукцион.\n\n"
-    "Разыгрывай свои подарки и забирай ставки — или участвуй в чужих раундах. "
-    "Результат каждого розыгрыша можно проверить."
+    "🩸 Добро пожаловать в Vloody{name}!\n\n"
+    "Честные розыгрыши NFT-подарков между игроками. Платформа ничего не выплачивает "
+    "из своего кармана — победитель получает банк раунда, а результат можно проверить.\n\n"
+    "🎡 Колесо — шанс растёт вместе со ставкой\n"
+    "🔐 Кибер-сейф — угадай число, открой сейф\n"
+    "🔨 Слепой аукцион — ставки скрыты до конца\n\n"
+    "Как начать:\n"
+    "1️⃣ Нажми «Открыть Vloody» и пополни баланс звёздами или TON\n"
+    "2️⃣ Выбери раунд и сделай ставку — или внеси свой подарок и запусти свой раунд\n"
+    "3️⃣ Выиграл — подарок можно вывести прямо в Telegram\n\n"
+    "/help — подробная справка · /fair — как проверить честность"
 )
 
+HELP_TEXT = (
+    "📖 Справка Vloody\n\n"
+    "💰 Баланс — внутренняя валюта VLD. Пополнение: Telegram Stars или TON, вывод — по заявке.\n\n"
+    "🎁 Подарки — принимаются уникальные (NFT) подарки. Отправь их аккаунту-хранителю "
+    "(инструкция — в боте хранителя, команда /start). Подарок появится в Профиле → Инвентарь.\n\n"
+    "🎯 Раунд — подарок лежит у хранителя, игроки делают ставки. Комиссия платформы — 10% с банка.\n\n"
+    "👥 Друзья — приглашай по реферальной ссылке из Профиля и получай процент с комиссии.\n\n"
+    "Вопросы по честности — /fair"
+)
 
-def _send_welcome(chat_id, param=""):
-    """Ответ на /start: кнопка, открывающая Mini App (с реферальным кодом или раундом из ссылки)."""
+FAIR_TEXT = (
+    "🛡 Честность (Provably Fair)\n\n"
+    "• Перед раундом мы публикуем хэш секретного числа — изменить его потом невозможно.\n"
+    "• После раунда раскрывается само число. Победитель определяется из него по открытой формуле.\n"
+    "• Любой может сам посчитать хэш и убедиться, что результат не подменён.\n"
+    "• Раунд стартует только с подарка, который реально лежит у хранителя.\n\n"
+    "Проверка — на экране раунда, кнопка «Проверить честность»."
+)
+
+BOT_COMMANDS = [{"command": "start", "description": "Открыть Vloody"},
+                {"command": "help", "description": "Как это работает"},
+                {"command": "fair", "description": "Как проверить честность"}]
+BOT_SHORT_DESC = "Честные PvP-розыгрыши NFT-подарков: колесо, сейф, аукцион."
+BOT_LONG_DESC = ("Vloody — честные розыгрыши NFT-подарков между игроками. Колесо, кибер-сейф и слепой "
+                 "аукцион, результат каждого раунда можно проверить. Нажми «Открыть» или /start.")
+
+
+def _send_welcome(chat_id, param="", first_name="", text=None):
+    """Ответ на /start, /help, /fair: кнопки открывают Mini App (с кодом друга или раундом из ссылки)."""
     if not PUBLIC_URL:
         return {"status": "no_public_url"}
     url = PUBLIC_URL + "/"
     if param and START_PARAM_RE.match(param):
         url += "?startapp=" + param
+    if text is None:
+        safe = re.sub(r"[^\w .\-]", "", first_name or "", flags=re.UNICODE).strip()[:30]
+        text = WELCOME_TEXT.format(name=f", {safe}" if safe else "")
+    rows = [[{"text": "🎡 Открыть Vloody", "web_app": {"url": url}}]]
+    relay = os.getenv("RELAY_USERNAME", "").strip().lstrip("@")
+    if relay:
+        rows.append([{"text": "🎁 Как внести подарок", "url": f"https://t.me/{relay}?start=help"}])
     try:
-        tg_api("sendMessage", {
-            "chat_id": chat_id, "text": WELCOME_TEXT,
-            "reply_markup": {"inline_keyboard": [[{"text": "🎡 Открыть Vloody", "web_app": {"url": url}}]]}})
+        tg_api("sendMessage", {"chat_id": chat_id, "text": text, "reply_markup": {"inline_keyboard": rows}})
     except Exception:
         return {"status": "send_failed"}
     return {"status": "welcome_sent"}
@@ -862,8 +900,14 @@ def handle_payment_update(update):
 
     msg = update.get("message") or {}
     text = msg.get("text") or ""
-    if text.startswith("/start") and (msg.get("chat") or {}).get("type") == "private":
-        return _send_welcome(msg["chat"]["id"], text[6:].strip())
+    if text.startswith("/") and (msg.get("chat") or {}).get("type") == "private":
+        parts = text.split(maxsplit=1)
+        cmd = parts[0][1:].split("@")[0].lower()
+        if cmd == "start":
+            return _send_welcome(msg["chat"]["id"], parts[1].strip() if len(parts) > 1 else "",
+                                 (msg.get("from") or {}).get("first_name", ""))
+        if cmd in ("help", "fair"):
+            return _send_welcome(msg["chat"]["id"], text=HELP_TEXT if cmd == "help" else FAIR_TEXT)
 
     pay = msg.get("successful_payment")
     if not pay or pay.get("currency") != "XTR":

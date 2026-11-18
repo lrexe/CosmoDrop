@@ -27,8 +27,22 @@
 <a class="vl-skip" href="#content">Перейти к содержимому</a>
 <!-- SPLASH (removed after init) -->
 <div id="splash" aria-hidden="true">
-  <div class="vl-splash-mark">Vl<i>oo</i>dy</div>
-  <div class="vl-splash-sub">Честные розыгрыши подарков</div>
+  <svg class="vl-vault" viewBox="0 0 160 160" width="160" height="160" focusable="false">
+    <g class="vl-vault-outer">
+      <circle cx="80" cy="80" r="74" class="vl-vault-ring"/>
+      <g class="vl-vault-ticks" id="vl-ticks"></g>
+    </g>
+    <g class="vl-vault-mid">
+      <circle cx="80" cy="80" r="52" class="vl-vault-ring2"/>
+      <circle cx="80" cy="28" r="4.5" class="vl-vault-pip"/>
+    </g>
+    <g class="vl-vault-core">
+      <circle cx="80" cy="80" r="30" class="vl-vault-disc"/>
+      <path class="vl-vault-check" d="M66 81l10 10 19-21" />
+    </g>
+  </svg>
+  <div class="vl-splash-mark"><span>V</span><span>l</span><i>o</i><i>o</i><span>d</span><span>y</span></div>
+  <div class="vl-splash-sub">Честные розыгрыши · Provably Fair</div>
 </div>
 
 <div id="app">

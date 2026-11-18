@@ -1639,9 +1639,17 @@
     } catch (e) { toast("Не удалось загрузить данные"); }
     $("app").classList.add("show");
     booted = true;
-    setTimeout(hideSplash, 1500);
+    setTimeout(hideSplash, 2100);
   }
   // заставка гаснет (opacity, vl-shell.css) и уходит из DOM: по transitionend или по таймеру, если события не будет
+  (function ticks() { // насечки циферблата: 24 штуки, каждая шестая длиннее
+    const g = $("vl-ticks"); if (!g) return;
+    let h = ""; for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * 2 * Math.PI, long = i % 6 === 0, r1 = 74, r2 = long ? 64 : 68;
+      h += `<line x1="${(80 + r1 * Math.sin(a)).toFixed(1)}" y1="${(80 - r1 * Math.cos(a)).toFixed(1)}" x2="${(80 + r2 * Math.sin(a)).toFixed(1)}" y2="${(80 - r2 * Math.cos(a)).toFixed(1)}"/>`;
+    }
+    g.innerHTML = h;
+  })();
   function hideSplash() {
     const sp = $("splash"); if (!sp) return;
     const drop = () => { clearTimeout(sp._t); if (sp.parentNode) sp.remove(); };
