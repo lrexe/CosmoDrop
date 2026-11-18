@@ -2,6 +2,7 @@ import hmac
 import os
 import secrets
 
+from bot import envfile
 from bot.envfile import load_env
 
 load_env()        # секреты из .env — до импорта модулей, которые читают окружение
@@ -88,7 +89,7 @@ def create_app():
     def tonconnect_manifest():
         # за туннелем/прокси TLS завершается снаружи, и Flask видит http:// —
         # кошельку нужен настоящий публичный адрес, поэтому берём PUBLIC_URL
-        base = (os.getenv("PUBLIC_URL") or request.url_root).rstrip("/")
+        base = (envfile.current("PUBLIC_URL") or request.url_root).rstrip("/")
         return jsonify({"url": base, "name": "Vloody",
                         "iconUrl": base + "/static/img/vloody-icon.png"})
 

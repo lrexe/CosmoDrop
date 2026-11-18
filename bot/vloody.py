@@ -33,6 +33,7 @@ from flask import Blueprint, jsonify, request
 
 from models import db, User, GiftItem, Pool, PoolEntry, LedgerTx, PayoutRequest, TonDeposit
 from bot.cases import get_or_create_user, err
+from bot import envfile
 from bot.giftart import SLUG_RE
 from bot.engine import gen_referral_code, level_from_xp, cum_xp
 from bot.auth import (
@@ -869,9 +870,10 @@ BOT_LONG_DESC = ("Vloody — честные розыгрыши NFT-подарк�
 
 def _send_welcome(chat_id, param="", first_name="", text=None):
     """Ответ на /start, /help, /fair: кнопки открывают Mini App (с кодом друга или раундом из ссылки)."""
-    if not PUBLIC_URL:
+    public = envfile.current("PUBLIC_URL").strip().rstrip("/")
+    if not public:
         return {"status": "no_public_url"}
-    url = PUBLIC_URL + "/"
+    url = public + "/"
     if param and START_PARAM_RE.match(param):
         url += "?startapp=" + param
     if text is None:

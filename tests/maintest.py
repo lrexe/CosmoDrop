@@ -89,6 +89,8 @@ check("один токен на оба бота отклонён", code == 1 and
 os.environ["RELAY_BOT_TOKEN"] = "777:RELAY"
 os.environ.update(saved)
 
+os.environ["PUBLIC_URL"] = "https://vloody.example.com"   # скрипт подключения менял адрес в окружении
+
 # ---------- /start через вебхук
 sent = []
 V.tg_api = lambda method, payload: sent.append((method, payload)) or {"ok": True, "result": True}
