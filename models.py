@@ -66,6 +66,12 @@ class User(db.Model):
             return self.photo_url
         return "🧑‍🚀"
 
+    @property
+    def photo(self):
+        """Фото из профиля Telegram (https-ссылка) или None — тогда показываем эмодзи-аватар."""
+        u = self.photo_url
+        return u if u and u.startswith("https://") else None
+
     def to_dict(self):
         return {
             "telegram_id": self.telegram_id,

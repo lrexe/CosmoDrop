@@ -675,3 +675,7 @@
   .vl-cr-sum-img, .vl-pod-step { animation: none; }
   .vl-cr-gift:active, .vl-wf:active, .vl-pf-act:active { transform: none; }
 }
+
+/* аватары из Telegram */
+.vl-av-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+.vl-pod-av, .vl-lb-av, .vl-pf-av { overflow: hidden; }

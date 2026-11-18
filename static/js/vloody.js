@@ -618,7 +618,7 @@
       const slot = wheelSlot(p.stakes, i, winKey);
       return `<li class="vl-stake${slot === "win" ? " is-win" : ""}${s.is_me ? " is-me" : ""}">
         <i class="vl-stake-sw" style="background:var(--vl-wh-${slot})" aria-hidden="true"></i>
-        <span class="vl-stake-av" aria-hidden="true">${esc(s.avatar)}</span>
+        <span class="vl-stake-av" aria-hidden="true">${avHtml(s.avatar, s.photo)}</span>
         <span class="vl-stake-n">${esc(s.name)}${s.is_me ? YOU : ""}</span>
         <span class="vl-stake-pct num">${fmtPct(s.amount / total * 100)}</span>
         <b class="vl-stake-v num">${fmt(s.amount)}</b></li>`;
@@ -937,7 +937,7 @@
       $("lb-podium").innerHTML = top.map((e, i) => `
         <li class="vl-pod-col vl-pod-${i + 1}${e.is_me ? " is-me" : ""}">
           <div class="vl-pod-who">
-            <span class="vl-pod-av" aria-hidden="true">${esc(e.avatar)}</span>
+            <span class="vl-pod-av" aria-hidden="true">${avHtml(e.avatar, e.photo)}</span>
             <span class="vl-pod-name" title="${esc(e.name)}">${esc(e.name)}</span>
             ${e.is_me ? YOU : ""}
             <span class="vl-pod-vol">${vld(e.volume)}</span>
@@ -950,7 +950,7 @@
       $("lb-list").innerHTML = rest.map((e) => `
         <li class="vl-lb-row${e.is_me ? " is-me" : ""}">
           <span class="vl-lb-rank num">${e.rank}</span>
-          <span class="vl-lb-av" aria-hidden="true">${esc(e.avatar)}</span>
+          <span class="vl-lb-av" aria-hidden="true">${avHtml(e.avatar, e.photo)}</span>
           <span class="vl-lb-id">
             <span class="vl-lb-name" title="${esc(e.name)}">${esc(e.name)}</span>
             <span class="vl-lb-sub">${e.is_me ? "это ты · " : ""}${fmt(e.wins)} ${plural(e.wins, ["победа", "победы", "побед"])}</span>
@@ -1105,7 +1105,7 @@
     try { state.profile = await api("/api/profile"); } catch (e) { toast(e.message); return; }
     const p = state.profile;
     setBalance(p.balance);
-    $("pf-av").textContent = p.avatar; $("pf-name").textContent = p.name; $("pf-name").title = p.name;
+    $("pf-av").innerHTML = avHtml(p.avatar, p.photo); $("pf-name").textContent = p.name; $("pf-name").title = p.name;
     $("pf-handle").textContent = p.username ? "@" + p.username : "ID " + p.telegram_id;
     $("pf-won").textContent = fmt(p.stats.nft_won); $("pf-part").textContent = fmt(p.stats.participations);
     $("pf-wd").textContent = fmt(p.stats.withdrawn);
@@ -1182,6 +1182,14 @@
     } catch (e) { box.innerHTML = listEmpty("i-close", esc(e.message)); }
   }
 
+  // аватар: фото из профиля Telegram, а если его нет или оно не загрузилось — эмодзи
+  function avHtml(emoji, photo) {
+    return photo ? `<img class="vl-av-img" src="${esc(photo)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-fb="${esc(emoji)}">` : esc(emoji);
+  }
+  document.addEventListener("error", (ev) => {
+    const im = ev.target;
+    if (im && im.classList && im.classList.contains("vl-av-img")) im.replaceWith(document.createTextNode(im.dataset.fb || "🧑‍🚀"));
+  }, true);
   const PO_STATUS = { pending: ["В обработке", "i-clock", "wait"], paid: ["Выплачено", "i-check", "ok"],
     rejected: ["Отклонено · возврат", "i-back", "bad"] };
   async function loadPayouts() {

@@ -244,7 +244,7 @@ def pool_dict(pool, user, detail=False):
         "participants": None if blind else participants,
         "my_total": mine,
         "my_chance": round(mine / bank * 100, 1) if (pool.mode == "wheel" and bank) else None,
-        "winner": ({"name": display_name(pool.winner), "avatar": pool.winner.avatar,
+        "winner": ({"name": display_name(pool.winner), "avatar": pool.winner.avatar, "photo": pool.winner.photo,
                     "is_me": pool.winner_id == uid} if pool.winner_id else None),
         "commission_rate": COMMISSION_RATE,
     }
@@ -264,7 +264,7 @@ def pool_dict(pool, user, detail=False):
             if e.user_id not in agg:
                 order.append(e.user_id)
                 agg[e.user_id] = {"key": e.user_id, "name": display_name(e.user),
-                                  "avatar": e.user.avatar, "amount": 0, "is_me": e.user_id == uid}
+                                  "avatar": e.user.avatar, "photo": e.user.photo, "amount": 0, "is_me": e.user_id == uid}
             agg[e.user_id]["amount"] += e.amount
         d["stakes"] = [agg[k] for k in order]
         d["winner_key"] = pool.winner_id
@@ -473,7 +473,7 @@ def profile_dict(user):
         user_id=user.id, status="paid").scalar()
     return {
         "telegram_id": user.telegram_id, "name": user.first_name or "Игрок",
-        "username": user.username, "avatar": user.avatar,
+        "username": user.username, "avatar": user.avatar, "photo": user.photo,
         "balance": user.stars_balance,
         "stats": {
             "nft_won": Pool.query.filter_by(winner_id=user.id, status="finished").count(),
@@ -960,7 +960,7 @@ def leaderboard(period):
     wins = dict(wins_q.group_by(Pool.winner_id).all())
 
     users = {u.id: u for u in User.query.filter(User.id.in_([r[0] for r in rows[:100]] + [user.id])).all()}
-    entries = [{"rank": i, "name": display_name(users[uid]), "avatar": users[uid].avatar,
+    entries = [{"rank": i, "name": display_name(users[uid]), "avatar": users[uid].avatar, "photo": users[uid].photo,
                 "volume": int(vol), "wins": wins.get(uid, 0), "is_me": uid == user.id}
                for i, (uid, vol) in enumerate(rows[:100], start=1) if uid in users]
     my_rank = next((i for i, (uid, _) in enumerate(rows, start=1) if uid == user.id), None)
