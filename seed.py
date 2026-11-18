@@ -211,6 +211,13 @@ def seed():
 
 
 if __name__ == "__main__":
+    # сид создаёт ВЫДУМАННЫЕ раунды, подарки и игроков с балансами — в боевом режиме
+    # (задан BOT_TOKEN) настоящие игроки поставили бы на подарки, которых не существует
+    from bot.auth import DEMO_MODE
+    if not DEMO_MODE and "--force" not in sys.argv:
+        raise SystemExit("seed.py создаёт демо-данные и отказывается работать в боевом режиме "
+                         "(задан BOT_TOKEN). Для локальной демонстрации запусти с DEMO_MODE=1 "
+                         "(в чистой копии базы!) или добавь --force, если ты точно знаешь, зачем.")
     # консоль Windows (cp1251) не умеет печатать эмодзи из отчёта
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
