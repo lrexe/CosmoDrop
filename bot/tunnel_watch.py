@@ -1,4 +1,4 @@
-"""Сторож временного туннеля (localhost.run): сам переподнимает его и перепривязывает бота.
+﻿"""Сторож временного туннеля (localhost.run): сам переподнимает его и перепривязывает бота.
 
 Бесплатный туннель периодически падает и меняет адрес. Этот скрипт:
   1. открывает туннель на локальный сервер;
@@ -16,7 +16,7 @@ import time
 import urllib.request
 
 PORT = os.getenv("PORT", "5000")
-URL_RE = re.compile(r"https://[a-z0-9]+\.lhr\.life")
+URL_RE = re.compile(r"https://[a-z0-9.]+\.lhr\.life")
 CHECK_EVERY = 20
 FAILS_TO_RESTART = 2
 
@@ -37,7 +37,7 @@ def run_once():
     cmd = ["ssh", "-o", "StrictHostKeyChecking=accept-new", "-o", "ServerAliveInterval=15",
            "-o", "ServerAliveCountMax=2", "-o", "ExitOnForwardFailure=yes",
            "-R", f"80:127.0.0.1:{PORT}", "nokey@localhost.run"]
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+    proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
     url = None
     deadline = time.time() + 40
     while time.time() < deadline and proc.poll() is None:
