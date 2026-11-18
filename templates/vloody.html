@@ -7,16 +7,11 @@
 <title>Vloody</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/vl-tokens.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/vl-base.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/vl-shell.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/vl-cards.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/vl-rounds.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/vl-screens.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/vl-overlays.css') }}">
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"></noscript>
+<link rel="stylesheet" href="{{ BUNDLE_CSS }}">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="{{ url_for('static', filename='js/vl-theme.js') }}"></script>
+<script>{{ THEME_JS|safe }}</script>
 <script src="https://unpkg.com/@tonconnect/ui@2.4.4/dist/tonconnect-ui.min.js" integrity="sha384-sSX7t/8RIb6F0lgKBLCCytcRdsJv/+lBzIvFAnTlX7HymE9i9wCFIFOQ4iH7dJWO" crossorigin="anonymous" defer onerror="window.TON_CONNECT_FAILED=true"></script>
 <script>
   window.VL = { demo: {{ 'true' if DEMO_MODE else 'false' }}, bot: "{{ BOT_USERNAME }}", relay: "{{ RELAY_USERNAME }}", commission: {{ COMMISSION_PCT }} };
@@ -725,7 +720,6 @@
 </div>
 
 <div id="toast" role="status" aria-live="polite"></div>
-<script src="{{ url_for('static', filename='js/vl-fx.js') }}" defer></script>
-<script src="{{ url_for('static', filename='js/vloody.js') }}" defer></script>
+<script src="{{ BUNDLE_JS }}" defer></script>
 </body>
 </html>

@@ -12,6 +12,7 @@ from flask_migrate import Migrate
 from models import db, ensure_columns, GiftItem
 from bot import giftart
 from bot.auth import init_security, DEMO_MODE, WEBHOOK_SECRET
+from bot.assets import init_assets
 from bot.vloody import vloody_bp, handle_payment_update, COMMISSION_RATE
 
 # ---------------------------------------------------------------------------
@@ -70,6 +71,7 @@ def create_app():
 
     app.register_blueprint(vloody_bp)
     init_security(app)
+    init_assets(app, BASE_DIR)
 
     @app.context_processor
     def inject_globals():

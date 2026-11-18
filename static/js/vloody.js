@@ -1638,16 +1638,18 @@
   async function init() {
     initTon();
     try {
+      // профиль и раунды грузим параллельно — через медленную сеть это вдвое быстрее
+      const poolsReady = loadPools();
       await loadProfile(false);
       const start = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param)
         || new URLSearchParams(location.search).get("startapp") || "";
       if (start && !start.startsWith("pool_")) api("/api/referral/bind", { code: start }).catch(() => {});
-      await loadPools();
+      await poolsReady;
       if (start.startsWith("pool_")) openPool(parseInt(start.slice(5), 10));
     } catch (e) { toast("Не удалось загрузить данные"); }
     $("app").classList.add("show");
     booted = true;
-    setTimeout(hideSplash, 2100);
+    setTimeout(hideSplash, Math.max(0, 1900 - performance.now())); // анимация входа ~1.9 с от открытия, дольше не держим
   }
   // заставка гаснет (opacity, vl-shell.css) и уходит из DOM: по transitionend или по таймеру, если события не будет
   (function ticks() { // насечки циферблата: 24 штуки, каждая шестая длиннее
