@@ -12,6 +12,7 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 
@@ -50,6 +51,8 @@ def run_once():
         proc.kill()
         return
     log(f"туннель: {url}")
+    # ssh пишет баннер/QR в канал; если его не читать, буфер забьётся и ssh встанет — туннель «зависнет»
+    threading.Thread(target=lambda: [None for _ in proc.stdout], daemon=True).start()
     time.sleep(3)
     res = subprocess.run([sys.executable, "-m", "bot.setup_main", url], capture_output=True, text=True,
                          encoding="utf-8", errors="replace")
