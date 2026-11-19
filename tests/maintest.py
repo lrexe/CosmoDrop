@@ -96,7 +96,7 @@ os.environ["PUBLIC_URL"] = "https://vloody.example.com"   # скрипт под�
 
 # ---------- /start через вебхук
 sent = []
-V.tg_api = lambda method, payload: sent.append((method, payload)) or {"ok": True, "result": True}
+V.tg_api = lambda method, payload, **kw: sent.append((method, payload)) or {"ok": True, "result": True}
 c = app.test_client()
 HOOK = {"X-Telegram-Bot-Api-Secret-Token": "hook-s"}
 start = lambda text, chat="private": {"message": {"text": text, "chat": {"id": 555, "type": chat}, "from": {"id": 555}}}
@@ -188,7 +188,7 @@ os.environ["BOT_USERNAME"] = "Cosmos67Drop_Bot"
 member_status, tg_down = {}, [False]
 
 
-def fake_tg(method, payload):
+def fake_tg(method, payload, **kw):
     sent.append((method, payload))
     if method == "getChatMember":
         return {"ok": True, "result": {"status": member_status.get(payload["user_id"], "member")}}

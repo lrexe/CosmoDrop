@@ -382,13 +382,20 @@ def _channel_for(pool):
     return ch if ch and ch.active else None
 
 
+CHANNEL_TIMEOUT = 4      # публикация идёт синхронно в запросе игрока: Telegram лежит — ждём недолго
+
+
 def _tg_post(method, payload):
+    """True — отправлено; False — Telegram отказал (можно попробовать иначе); None — сеть/таймаут (не повторяем)."""
     try:
-        tg_api(method, payload)
+        tg_api(method, payload, timeout=CHANNEL_TIMEOUT)
         return True
-    except Exception as e:
+    except urllib.error.HTTPError as e:
         log.warning("telegram %s to %s failed: %s", method, payload.get("chat_id"), e)
         return False
+    except Exception as e:
+        log.warning("telegram %s to %s failed: %s", method, payload.get("chat_id"), e)
+        return None
 
 
 def pool_post_text(pool):
@@ -417,9 +424,10 @@ def post_pool_to_channel(pool):
     public = envfile.current("PUBLIC_URL").strip().rstrip("/")
     slug = clean_slug(pool.gift.slug)
     if public.startswith("https://") and slug:
-        if _tg_post("sendPhoto", {**payload, "photo": f"{public}/gift-art/{slug}.jpg", "caption": text}):
-            return True
-    return _tg_post("sendMessage", {**payload, "text": text})
+        sent = _tg_post("sendPhoto", {**payload, "photo": f"{public}/gift-art/{slug}.jpg", "caption": text})
+        if sent is not False:            # отправлено или Telegram недоступен — второй таймаут не ждём
+            return bool(sent)
+    return bool(_tg_post("sendMessage", {**payload, "text": text}))
 
 
 def post_pool_result(pool):
@@ -434,7 +442,7 @@ def post_pool_result(pool):
                 f"💰 Банк: {fmt_cur(pool.bank or 0, cur)}")
     else:
         text = f"{head}\nРаунд отменён — ставки возвращены"
-    return _tg_post("sendMessage", {"chat_id": ch.chat_id, "text": text})
+    return bool(_tg_post("sendMessage", {"chat_id": ch.chat_id, "text": text}))
 
 
 def _channel_member_update(upd):
@@ -769,6 +777,10 @@ def auction_bid(pool_id):
     return _stake_or_bid(pool_id, "auction", "bid")
 
 
+def _number_taken(pool, number):
+    return PoolEntry.query.filter_by(pool_id=pool.id, number=number).first() is not None
+
+
 @vloody_bp.route("/api/pools/<int:pool_id>/vault", methods=["POST"])
 def vault_try(pool_id):
     user, pool, e = _stake_guard(pool_id, "vault")
@@ -781,17 +793,21 @@ def vault_try(pool_id):
         return err("Введи число", 400)
     if number < 1 or number > cfg["max"]:
         return err(f"Число от 1 до {cfg['max']}", 400)
-    if PoolEntry.query.filter_by(pool_id=pool.id, number=number).first():
+    if _number_taken(pool, number):
         return err("Это число уже занято", 400)
     if balance_of(user, pool.currency) < pool.min_stake:
         return err(f"Недостаточно {pool.currency}", 400)
 
-    _place(user, pool, pool.min_stake, "vault", number=number)
-    db.session.flush()
-    hit = number == cfg["secret"]
-    if hit:
-        _finish(pool, user.id, {"secret": cfg["secret"]})
-    db.session.commit()
+    try:
+        _place(user, pool, pool.min_stake, "vault", number=number)
+        db.session.flush()          # уникальный (pool_id, number): параллельная попытка с тем же числом упадёт здесь
+        hit = number == cfg["secret"]
+        if hit:
+            _finish(pool, user.id, {"secret": cfg["secret"]})
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()       # списание откатывается вместе с попыткой
+        return err("Это число уже занято", 400)
     return jsonify({"hit": hit, "number": number, "balance": user.stars_balance,
                     "balances": {"VLD": user.stars_balance or 0, "VDT": user.vdt_balance or 0},
                     "pool": pool_dict(pool, user, detail=True)})
@@ -1091,11 +1107,11 @@ def payouts_mine():
 
 
 # ---- пополнение ----
-def tg_api(method, payload):
+def tg_api(method, payload, timeout=10):
     req = urllib.request.Request(
         f"https://api.telegram.org/bot{BOT_TOKEN}/{method}",
         data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=10) as r:
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read())
 
 
@@ -1189,6 +1205,9 @@ def scan_ton_deposits(force=False):
             continue
         comment = _tx_comment(msg)
         if not tx_hash or not msg.get("source") or nano < TON_MIN_DEPOSIT_NANO or not comment:
+            continue
+        # отражённое сообщение (bounce) или перевод, который кошелёк тут же вернул отправителю, — не депозит
+        if msg.get("bounced") or any((o or {}).get("destination") == msg["source"] for o in tx.get("out_msgs") or []):
             continue
         if TonDeposit.query.filter_by(tx_hash=tx_hash).first():
             continue
@@ -1343,11 +1362,15 @@ def handle_payment_update(update):
     """Обработка вебхука Telegram (вызывается из app.py после проверки секрета)."""
     pcq = update.get("pre_checkout_query")
     if pcq:
+        problem = _precheckout_problem(pcq)
+        answer = {"pre_checkout_query_id": pcq.get("id"), "ok": problem is None}
+        if problem:
+            answer["error_message"] = problem
         try:
-            tg_api("answerPreCheckoutQuery", {"pre_checkout_query_id": pcq["id"], "ok": True})
+            tg_api("answerPreCheckoutQuery", answer)
         except Exception:
             pass
-        return {"ok": True}
+        return {"ok": problem is None}
 
     if update.get("my_chat_member"):
         return _channel_member_update(update["my_chat_member"])
@@ -1369,14 +1392,41 @@ def handle_payment_update(update):
     charge = pay.get("telegram_payment_charge_id")
     if not charge or LedgerTx.query.filter_by(ref=charge).first():
         return {"status": "duplicate"}
+    stars = pay.get("total_amount")                   # у XTR нет копеек: сумма уже в звёздах
+    if isinstance(stars, bool) or not isinstance(stars, int) or stars <= 0:
+        log.error("successful_payment %s: bad total_amount %r", charge, stars)
+        return {"status": "bad_amount"}
+    # зачисляем тому, кто заплатил (from.id), ровно оплаченное; payload деньги не переадресует
     user = User.query.filter_by(telegram_id=(msg.get("from") or {}).get("id")).first()
     if not user:
         return {"status": "user_not_found"}
-    stars = int(pay["total_amount"])                  # у XTR нет копеек: сумма уже в звёздах
     vld = stars_to_vld(stars)
     move_vld(lock(user), vld, "deposit", f"Пополнение · {stars} Telegram Stars", ref=charge)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:                            # тот же платёж параллельно уже зачислен
+        db.session.rollback()
+        return {"status": "duplicate"}
     return {"status": "credited", "amount": vld}
+
+
+TOPUP_PAYLOAD_RE = re.compile(r"^topup:(\d{1,20}):(\d{1,6})$")
+
+
+def _precheckout_problem(pcq):
+    """Почему нельзя принять оплату счёта (None — можно). Счёт выписан нами: payload = topup:<tid>:<stars>."""
+    m = TOPUP_PAYLOAD_RE.fullmatch(str(pcq.get("invoice_payload") or ""))
+    amount = pcq.get("total_amount")
+    if (pcq.get("currency") != "XTR" or not m or isinstance(amount, bool) or not isinstance(amount, int)
+            or int(m.group(2)) != amount or not 1 <= amount <= 100000):
+        return "Счёт недействителен — создай новый в приложении"
+    payer = (pcq.get("from") or {}).get("id")
+    if int(m.group(1)) != payer:
+        return "Этот счёт выписан другому игроку"
+    user = User.query.filter_by(telegram_id=payer).first()
+    if not user or user.is_banned:
+        return "Аккаунт недоступен для пополнения"
+    return None
 
 
 @vloody_bp.route("/api/demo/gift", methods=["POST"])

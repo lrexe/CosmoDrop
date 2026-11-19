@@ -732,6 +732,130 @@ check("A6: у отменённого раунда bank = 0 и refunded = сум�
       (d.get("bank"), d.get("refunded")))
 check("A6: ставки отменённого раунда видны для прозрачности", d.get("numbers") and len(d["numbers"]) == 1, d.get("numbers"))
 
+# ---------- 4. Stars: pre_checkout_query проверяется, а не одобряется вслепую
+sent6 = []
+_tg_api = vloody.tg_api
+vloody.tg_api = lambda method, payload, **kw: sent6.append((method, payload)) or {"ok": True, "result": True}
+
+
+def pcq(from_id, payload, amount, currency="XTR"):
+    sent6.clear()
+    with app.app_context():
+        vloody.handle_payment_update({"pre_checkout_query": {
+            "id": "pcq-1", "from": {"id": from_id}, "currency": currency, "total_amount": amount,
+            "invoice_payload": payload}})
+    return sent6[-1][1] if sent6 else {}
+
+
+try:
+    me6 = IDS["a6_pay"]
+    a = pcq(me6, f"topup:{me6}:100", 100)
+    check("A6: pre_checkout верного счёта -> ok", a.get("ok") is True, a)
+    a = pcq(me6, f"topup:{IDS['a6_p1']}:100", 100)
+    check("A6: pre_checkout чужого счёта -> отказ", a.get("ok") is False and a.get("error_message"), a)
+    a = pcq(me6, f"topup:{me6}:100", 1)
+    check("A6: pre_checkout с другой суммой -> отказ", a.get("ok") is False, a)
+    a = pcq(me6, f"topup:{me6}:100", 100, currency="USD")
+    check("A6: pre_checkout не в XTR -> отказ", a.get("ok") is False, a)
+    a = pcq(me6, "garbage", 100)
+    check("A6: pre_checkout с мусорным payload -> отказ", a.get("ok") is False, a)
+    a = pcq(990000999, "topup:990000999:100", 100)
+    check("A6: pre_checkout незнакомого игрока -> отказ", a.get("ok") is False, a)
+    with app.app_context():
+        User.query.filter_by(telegram_id=me6).first().is_banned = True
+        db.session.commit()
+    a = pcq(me6, f"topup:{me6}:100", 100)
+    check("A6: pre_checkout заблокированного -> отказ", a.get("ok") is False, a)
+    with app.app_context():
+        User.query.filter_by(telegram_id=me6).first().is_banned = False
+        db.session.commit()
+finally:
+    vloody.tg_api = _tg_api
+
+# successful_payment: платит from.id — ему и зачисляем фактически оплаченное, payload не переадресует деньги
+setbal("a6_pay", vld=0, vdt=0)
+setbal("a6_p1", vld=0, vdt=0)
+upd6 = {"message": {"from": {"id": IDS["a6_pay"]}, "successful_payment": {
+    "currency": "XTR", "total_amount": 70, "invoice_payload": f"topup:{IDS['a6_p1']}:9999",
+    "telegram_payment_charge_id": "a6-charge-" + secrets.token_hex(6)}}}
+with app.app_context():
+    r6 = vloody.handle_payment_update(upd6)
+check("A6: successful_payment зачисляет плательщику фактическую сумму", r6.get("amount") == 70
+      and bals("a6_pay") == (70, 0) and bals("a6_p1") == (0, 0), (r6, bals("a6_pay"), bals("a6_p1")))
+for bad_amt in (0, -5, "x"):
+    bad = {"message": {"from": {"id": IDS["a6_pay"]}, "successful_payment": {
+        "currency": "XTR", "total_amount": bad_amt, "telegram_payment_charge_id": "a6-bad-" + secrets.token_hex(6)}}}
+    with app.app_context():
+        try:
+            rb, eb = vloody.handle_payment_update(bad), None
+        except Exception as e:                                   # noqa: BLE001
+            rb, eb = None, repr(e)
+    check(f"A6: successful_payment total_amount={bad_amt!r} не зачисляется и не падает",
+          eb is None and rb.get("status") != "credited" and bals("a6_pay") == (70, 0), (rb, eb, bals("a6_pay")))
+
+# ---------- 5. TON: отражённые (bounced) сообщения и возвраты не зачисляются
+setbal("a6_pay", vdt=0)
+with app.app_context():
+    deps = []
+    for _ in range(2):
+        dp = TonDeposit(user_id=uid_of("a6_pay"), comment="vl" + secrets.token_hex(6), created_at=datetime.utcnow())
+        db.session.add(dp); db.session.commit()
+        deps.append(dp.comment)
+chain6 = {"result": [
+    {"transaction_id": {"hash": "a6-bounced-" + secrets.token_hex(4)},
+     "in_msg": {"source": "UQsender", "value": "3000000000", "message": deps[0], "bounced": True}, "out_msgs": []},
+    {"transaction_id": {"hash": "a6-returned-" + secrets.token_hex(4)},
+     "in_msg": {"source": "UQsender2", "value": "3000000000", "message": deps[1]},
+     "out_msgs": [{"source": "UQwallet", "destination": "UQsender2", "value": "2990000000"}]}]}
+vloody.urllib.request.urlopen = lambda *a, **k: _Resp(json.dumps(chain6).encode())
+vloody.TON_WALLET, vloody.TON_SCAN_EVERY = "UQ" + "T" * 46, 0
+try:
+    with app.app_context():
+        n6 = vloody.scan_ton_deposits(force=True)
+finally:
+    vloody.urllib.request.urlopen, vloody.TON_WALLET, vloody.TON_SCAN_EVERY = _urlopen, _wallet, _every
+check("A6: bounced и возвращённые отправителю переводы не зачислены", n6 == 0 and bals("a6_pay")[1] == 0,
+      (n6, bals("a6_pay")))
+
+# ---------- 6. сейф: гонка за одно число упирается в уникальный индекс -> 400, а не 500, деньги целы
+setbal("a6_p1", vld=1000, vdt=0)
+setbal("a6_p2", vld=1000, vdt=0)
+v9 = pool6({"mode": "vault", "gift_id": gift6(), "min_stake": 10, "vault_max": 25})
+with app.app_context():
+    sec9 = json.loads(db.session.get(Pool, v9["id"]).cfg)["secret"]
+n9 = 1 if sec9 != 1 else 2
+post("a6_p1", f"/api/pools/{v9['id']}/vault", {"number": n9})
+_taken = getattr(vloody, "_number_taken", None)
+vloody._number_taken = lambda pool, number: False       # проверка «прошла» у обоих — как при гонке
+try:
+    r = post("a6_p2", f"/api/pools/{v9['id']}/vault", {"number": n9})
+finally:
+    if _taken:
+        vloody._number_taken = _taken
+    else:
+        del vloody._number_taken
+check("A6: гонка за число сейфа -> 400 «уже занято», не 500", r.status_code == 400
+      and (r.get_json() or {}).get("error") == "Это число уже занято", (r.status_code, r.get_json()))
+check("A6: проигравший гонку ничего не потерял", bals("a6_p2")[0] == 1000, bals("a6_p2"))
+
+# ---------- 7. публикация в канал: короткий таймаут, без повторной попытки после таймаута
+seen_to = []
+
+
+def _slow(req, timeout=None, **kw):
+    seen_to.append((req.full_url.rsplit("/", 1)[-1], timeout))
+    raise vloody.urllib.error.URLError(TimeoutError("timed out"))
+
+
+vloody.urllib.request.urlopen = _slow
+try:
+    with app.app_context():
+        okp = vloody._tg_post("sendPhoto", {"chat_id": -1, "photo": "x"})
+finally:
+    vloody.urllib.request.urlopen = _urlopen
+check("A6: публикация в канал с таймаутом ≤ 4 c", seen_to and all(t is not None and t <= 4 for _, t in seen_to), seen_to)
+check("A6: таймаут Telegram не роняет публикацию", okp is not True, okp)
+
 # ---------- уборка блока 6
 clean6()
 
