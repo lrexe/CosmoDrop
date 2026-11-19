@@ -1,8 +1,0 @@
-2026-11-19 08:24:39,336 INFO Бот-хранитель @VloodyRelay_bot запущен, сервер http://127.0.0.1:5000
-2026-11-19 08:24:41,144 INFO Звёзд на аккаунте-хранителе: 0
-2026-11-19 08:25:16,460 ERROR Ошибка: The read operation timed out
-2026-11-19 08:25:42,567 ERROR Ошибка: <urlopen error [WinError 10060] Попытка установить соединение была безуспешной, т.к. от другого компьютера за требуемое время не получен нужный отклик, или было разорвано уже установленное соединение из-за неверного отклика уже подключенного компьютера>
-2026-11-19 08:25:58,697 ERROR Ошибка: <urlopen error [Errno 11001] getaddrinfo failed>
-2026-11-19 08:26:14,824 ERROR Ошибка: <urlopen error [Errno 11001] getaddrinfo failed>
-2026-11-19 08:26:19,895 ERROR Ошибка: <urlopen error [Errno 11001] getaddrinfo failed>
-2026-11-19 08:26:36,041 ERROR Ошибка: <urlopen error [Errno 11001] getaddrinfo failed>

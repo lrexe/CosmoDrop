@@ -20,3 +20,6 @@ instance/*.db
 instance/relay_state.json*
 .superpowers/
 instance/gift_cache/
+instance/*.out
+instance/*.err
+instance/backup-*.db
