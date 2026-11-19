@@ -110,14 +110,51 @@ def lock(user):
     return user
 
 
-def move(user, amount, kind, title, ref=None):
-    """Единственная точка изменения баланса. user=None — доход платформы."""
+CURRENCIES = ("VLD", "VDT")
+
+
+def _move(user, amount, kind, title, ref, cur, field, label):
     if user is not None:
-        if user.stars_balance + amount < 0:
-            raise ValueError("Недостаточно VLD")
-        user.stars_balance += amount
-    db.session.add(LedgerTx(user_id=user.id if user else None, kind=kind,
-                            amount=amount, title=title[:120], ref=ref))
+        if (getattr(user, field) or 0) + amount < 0:
+            raise ValueError(f"Недостаточно {label}")
+        setattr(user, field, (getattr(user, field) or 0) + amount)
+    db.session.add(LedgerTx(user_id=user.id if user else None, kind=kind, amount=amount,
+                            currency=cur, title=title[:120], ref=ref))
+
+
+def move_vld(user, amount, kind, title, ref=None):
+    """Единственная точка изменения баланса VLD. user=None — доход платформы."""
+    _move(user, amount, kind, title, ref, "VLD", "stars_balance", "VLD")
+
+
+def move_vdt(user, amount, kind, title, ref=None):
+    """Единственная точка изменения баланса VDT (в милли-VDT). user=None — доход платформы."""
+    _move(user, amount, kind, title, ref, "VDT", "vdt_balance", "VDT")
+
+
+move = move_vld      # старое имя для кода, который ещё не знает про две валюты
+
+
+def mover(cur):
+    if cur == "VLD":
+        return move_vld
+    if cur == "VDT":
+        return move_vdt
+    raise ValueError("Неизвестная валюта")
+
+
+def balance_of(user, cur):
+    mover(cur)
+    return (user.stars_balance if cur == "VLD" else user.vdt_balance) or 0
+
+
+def fmt_cur(amount, cur):
+    mover(cur)
+    if cur == "VLD":
+        return f"{amount} VLD"
+    sign, a = ("-" if amount < 0 else ""), abs(amount)
+    frac = f"{a % 1000:03d}".rstrip("0")
+    return f"{sign}{a // 1000}{'.' + frac if frac else ''} VDT"
 
 
 def bump_activity(user, staked):
@@ -476,6 +513,7 @@ def profile_dict(user):
         "telegram_id": user.telegram_id, "name": user.first_name or "Игрок",
         "username": user.username, "avatar": user.avatar, "photo": user.photo,
         "balance": user.stars_balance,
+        "balances": {"VLD": user.stars_balance or 0, "VDT": user.vdt_balance or 0},
         "stats": {
             "nft_won": Pool.query.filter_by(winner_id=user.id, status="finished").count(),
             "participations": db.session.query(PoolEntry.pool_id).filter_by(

@@ -30,7 +30,8 @@ class User(db.Model):
     photo_url = db.Column(db.String(255))            # URL или emoji-аватар
     registered_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    stars_balance = db.Column(db.Integer, default=0)
+    stars_balance = db.Column(db.Integer, default=0)   # баланс VLD
+    vdt_balance = db.Column(db.Integer, default=0)     # баланс VDT в милли-VDT (1 VDT = 1000)
     welcome_bonus = db.Column(db.Integer, default=0)   # 1 — демо-бонус за вход уже выдан
     total_earned = db.Column(db.Integer, default=0)
     total_spent = db.Column(db.Integer, default=0)
@@ -311,6 +312,7 @@ class Pool(db.Model):
     mode = db.Column(db.String(10), nullable=False)
     min_stake = db.Column(db.Integer, nullable=False)
     status = db.Column(db.String(10), default="live", index=True)   # live | finished | cancelled
+    currency = db.Column(db.String(4), default="VLD")               # валюта раунда: VLD | VDT
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     ends_at = db.Column(db.DateTime, index=True)                    # None — бессрочно (сейф)
     finished_at = db.Column(db.DateTime)
@@ -354,6 +356,7 @@ class LedgerTx(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), index=True)
     kind = db.Column(db.String(20), nullable=False, index=True)
     amount = db.Column(db.Integer, nullable=False)                  # + зачисление, − списание
+    currency = db.Column(db.String(4), default="VLD", index=True)   # VLD | VDT (VDT — в милли)
     title = db.Column(db.String(120), default="")
     ref = db.Column(db.String(128), unique=True)                    # id внешнего платежа — от дублей
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
@@ -370,6 +373,7 @@ class PayoutRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     method = db.Column(db.String(10), default="STARS")
+    currency = db.Column(db.String(4), default="VLD")               # валюта списания: VLD | VDT
     destination = db.Column(db.String(128), nullable=False)
     amount = db.Column(db.Integer, nullable=False)                  # списано с баланса
     commission = db.Column(db.Integer, nullable=False)
@@ -410,8 +414,10 @@ class TonDeposit(db.Model):
 def ensure_columns():
     """Мини-миграция: добавляет в существующие таблицы колонки, появившиеся позже."""
     added = {"gift_items": [("transfer_fee", "INTEGER DEFAULT 0"), ("slug", "VARCHAR(64)")],
-             "payout_requests": [("net_nano", "BIGINT DEFAULT 0")],
-             "users": [("welcome_bonus", "INTEGER DEFAULT 0")]}
+             "payout_requests": [("net_nano", "BIGINT DEFAULT 0"), ("currency", "VARCHAR(4) DEFAULT 'VLD'")],
+             "users": [("welcome_bonus", "INTEGER DEFAULT 0"), ("vdt_balance", "INTEGER DEFAULT 0")],
+             "ledger": [("currency", "VARCHAR(4) DEFAULT 'VLD'")],
+             "pools": [("currency", "VARCHAR(4) DEFAULT 'VLD'")]}
     inspector = db.inspect(db.engine)
     for table, columns in added.items():
         if not inspector.has_table(table):
