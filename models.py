@@ -327,10 +327,33 @@ class Pool(db.Model):
     seed_hash = db.Column(db.String(64), nullable=False)
     cfg = db.Column(db.Text, default="{}")                          # JSON: настройки режима
     result = db.Column(db.Text, default="{}")                       # JSON: данные для проверки
+    channel_id = db.Column(db.Integer, db.ForeignKey("channels.id"))  # куда бот публикует раунд и итог
 
     organizer = db.relationship("User", foreign_keys=[organizer_id], lazy=True)
     winner = db.relationship("User", foreign_keys=[winner_id], lazy=True)
     gift = db.relationship("GiftItem", lazy=True)
+
+
+class Channel(db.Model):
+    """Telegram-канал, где основной бот — администратор и публикует раунды организатора.
+
+    active узнаём из my_chat_member (бот админ с правом публикации). owner_id ставится
+    только после проверки getChatMember: привязывающий сам — создатель или админ канала.
+    """
+    __tablename__ = "channels"
+
+    id = db.Column(db.Integer, primary_key=True)
+    chat_id = db.Column(db.BigInteger, unique=True, nullable=False, index=True)
+    title = db.Column(db.String(128), default="")
+    username = db.Column(db.String(64))
+    added_by_tg = db.Column(db.BigInteger, index=True)              # кто последним сделал бота админом
+    owner_id = db.Column(db.Integer, db.ForeignKey("users.id"), index=True)
+    active = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {"id": self.id, "chat_id": self.chat_id, "title": self.title or "",
+                "username": self.username, "active": bool(self.active)}
 
 
 class PoolEntry(db.Model):
@@ -418,7 +441,7 @@ def ensure_columns():
              "payout_requests": [("net_nano", "BIGINT DEFAULT 0"), ("currency", "VARCHAR(4) DEFAULT 'VLD'")],
              "users": [("welcome_bonus", "INTEGER DEFAULT 0"), ("vdt_balance", "INTEGER DEFAULT 0")],
              "ledger": [("currency", "VARCHAR(4) DEFAULT 'VLD'")],
-             "pools": [("currency", "VARCHAR(4) DEFAULT 'VLD'")]}
+             "pools": [("currency", "VARCHAR(4) DEFAULT 'VLD'"), ("channel_id", "INTEGER")]}
     inspector = db.inspect(db.engine)
     for table, columns in added.items():
         if not inspector.has_table(table):

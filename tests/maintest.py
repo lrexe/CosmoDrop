@@ -71,6 +71,9 @@ env = dict(l.split("=", 1) for l in open(env_path, encoding="utf-8").read().spli
 check("вебхук поставлен на адрес оплаты с секретом",
       by["setWebhook"]["url"] == "https://vloody.example.com/api/telegram_payment"
       and by["setWebhook"]["secret_token"] == env["TELEGRAM_WEBHOOK_SECRET"] and len(env["TELEGRAM_WEBHOOK_SECRET"]) > 30)
+check("вебхук получает события о правах бота в каналах",
+      by["setWebhook"]["allowed_updates"] == ["message", "pre_checkout_query", "my_chat_member"],
+      by["setWebhook"].get("allowed_updates"))
 check("кнопка меню открывает Mini App",
       by["setChatMenuButton"]["menu_button"] == {"type": "web_app", "text": "Vloody", "web_app": {"url": "https://vloody.example.com/"}})
 check(".env: секреты созданы, адрес обновлён, чужие строки целы",
@@ -151,6 +154,200 @@ check("демо-пополнение в боевом режиме идёт че�
 with app.app_context():
     User.query.filter(User.telegram_id.in_([990000501, 990000502])).delete(synchronize_session=False)
     db.session.commit()
+
+# ---------- бот публикует раунды в канале
+from datetime import datetime, timedelta                       # noqa: E402
+from models import Channel, GiftItem, Pool, PoolEntry, LedgerTx  # noqa: E402
+
+TIDS = [990000950, 990000951, 990000952]
+CH, CH2 = -1009900009500, -1009900009501
+
+
+def wipe():
+    with app.app_context():
+        ids = [u.id for u in User.query.filter(User.telegram_id.in_(TIDS)).all()]
+        if ids:
+            pools = Pool.query.filter(Pool.organizer_id.in_(ids)).all()
+            refs = [V.pool_ref(p, w) for p in pools for w in ("fee", "commission")]
+            PoolEntry.query.filter(PoolEntry.pool_id.in_([p.id for p in pools] or [0])).delete(synchronize_session=False)
+            PoolEntry.query.filter(PoolEntry.user_id.in_(ids)).delete(synchronize_session=False)
+            for p in pools:
+                db.session.delete(p)
+            db.session.flush()
+            if refs:
+                LedgerTx.query.filter(LedgerTx.user_id == None, LedgerTx.ref.in_(refs)).delete(synchronize_session=False)  # noqa: E711
+            LedgerTx.query.filter(LedgerTx.user_id.in_(ids)).delete(synchronize_session=False)
+            GiftItem.query.filter(GiftItem.owner_id.in_(ids)).delete(synchronize_session=False)
+        Channel.query.filter(Channel.chat_id.in_([CH, CH2, -1009900009502])).delete(synchronize_session=False)
+        User.query.filter(User.telegram_id.in_(TIDS)).delete(synchronize_session=False)
+        db.session.commit()
+
+
+wipe()
+os.environ["BOT_USERNAME"] = "Cosmos67Drop_Bot"
+member_status, tg_down = {}, [False]
+
+
+def fake_tg(method, payload):
+    sent.append((method, payload))
+    if method == "getChatMember":
+        return {"ok": True, "result": {"status": member_status.get(payload["user_id"], "member")}}
+    if tg_down[0]:
+        raise RuntimeError("telegram down")
+    return {"ok": True, "result": {"message_id": 1}}
+
+
+V.tg_api = fake_tg
+OA, OB, OC = hdr(990000950, "chan_a"), hdr(990000951, "chan_b"), hdr(990000952, "chan_c")
+for h in (OA, OB, OC):
+    c.get("/api/profile", headers=h)
+
+
+def mcm(chat_id, status, by=990000950, chat_type="channel", **rights):
+    return {"my_chat_member": {"chat": {"id": chat_id, "type": chat_type, "title": "Канал Vloody",
+                                        "username": "vloody_test_ch"},
+                               "from": {"id": by}, "date": 0,
+                               "old_chat_member": {"status": "left", "user": {"id": 1, "is_bot": True}},
+                               "new_chat_member": {"status": status, "user": {"id": 1, "is_bot": True}, **rights}}}
+
+
+c.post("/api/telegram_payment", headers=HOOK, json=mcm(CH, "administrator", can_post_messages=True))
+with app.app_context():
+    ch = Channel.query.filter_by(chat_id=CH).first()
+    check("бота сделали админом канала -> канал записан активным",
+          ch is not None and ch.active and ch.added_by_tg == 990000950 and ch.owner_id is None
+          and ch.title == "Канал Vloody" and ch.username == "vloody_test_ch", ch and ch.active)
+    ch_id = ch.id if ch else 0
+c.post("/api/telegram_payment", headers=HOOK, json=mcm(-1009900009502, "administrator", chat_type="group"))
+with app.app_context():
+    check("группы (не каналы) не записываются", Channel.query.filter_by(chat_id=-1009900009502).first() is None)
+
+r = c.get("/api/channels", headers=OA).get_json()
+check("GET /api/channels: канал ещё не привязан, но предложен добавившему",
+      r["items"] == [] and [x["chat_id"] for x in r["pending"]] == [CH], r)
+check("чужому пользователю канал не предлагается", c.get("/api/channels", headers=OB).get_json()["pending"] == [])
+
+member_status[990000951] = "member"
+r = c.post("/api/channels/link", headers=OB, json={"chat_id": CH})
+check("привязать канал не-админ не может -> 403", r.status_code == 403, r.status_code)
+r = c.post("/api/channels/link", headers=OA, json={"chat_id": -1009900009999})
+check("неизвестный канал -> 404", r.status_code == 404, r.status_code)
+member_status[990000950] = "creator"
+r = c.post("/api/channels/link", headers=OA, json={"chat_id": CH})
+j = r.get_json()
+check("создатель канала привязывает его -> 200",
+      r.status_code == 200 and j["channel"]["chat_id"] == CH and j["channel"]["active"] is True
+      and set(j["channel"]) >= {"id", "chat_id", "title", "username", "active"}, j)
+check("проверка прав ушла в Telegram с моим id",
+      any(m == "getChatMember" and p["chat_id"] == CH and p["user_id"] == 990000950 for m, p in sent))
+r = c.get("/api/channels", headers=OA).get_json()
+check("канал виден в моём списке, из «ожидающих» ушёл",
+      [x["id"] for x in r["items"]] == [ch_id] and r["pending"] == [], r)
+check("в чужом списке канала нет", c.get("/api/channels", headers=OB).get_json()["items"] == [])
+
+with app.app_context():
+    ua, ub, uc = (User.query.filter_by(telegram_id=t).first() for t in TIDS)
+    ua.vdt_balance, ub.stars_balance, uc.stars_balance = 1000, 500, 500
+    gifts = []
+    for owner, slug in ((ua, "plushpepe-1337"), (ua, None), (ua, None), (ub, None)):
+        g = GiftItem(owner_id=owner.id, name="Plush Pepe #1337", emoji="🐸", slug=slug, status="held")
+        db.session.add(g)
+        gifts.append(g)
+    db.session.commit()
+    g_slug, g_plain, g_plain2, g_b = (g.id for g in gifts)
+
+new_pool = lambda h, gid, **kw: c.post("/api/pools", headers=h, json={"mode": "wheel", "currency": "VLD", "min_stake": 5,
+                                                                      "gift_id": gid, "duration_min": 15, **kw})
+r = new_pool(OB, g_b, channel_id=ch_id)
+check("чужой канал в раунде -> 400", r.status_code == 400 and "Канал не найден" in r.get_json()["error"], r.get_json())
+r = new_pool(OA, g_slug, channel_id=999999999)
+check("несуществующий канал -> 400", r.status_code == 400 and "бот в нём не админ" in r.get_json()["error"])
+
+n = len(sent)
+r = new_pool(OA, g_slug, channel_id=ch_id)
+p1 = r.get_json()
+posts = [(m, p) for m, p in sent[n:] if m in ("sendMessage", "sendPhoto")]
+m, p = posts[-1] if posts else (None, {})
+btn = (p.get("reply_markup") or {}).get("inline_keyboard", [[{}]])[0][0]
+body = p.get("caption") or p.get("text") or ""
+check("раунд с каналом -> пост с картинкой подарка и кнопкой участия",
+      r.status_code == 200 and len(posts) == 1 and m == "sendPhoto" and p["chat_id"] == CH
+      and p["photo"] == "https://vloody.example.com/gift-art/plushpepe-1337.jpg"
+      and btn.get("text") == "🎯 Участвовать"
+      and btn.get("url") == f"https://t.me/Cosmos67Drop_Bot?startapp=pool_{p1['id']}", (m, p))
+check("в посте: подарок, режим, валюта, ставка, срок; без разметки",
+      "Plush Pepe #1337" in body and "Колесо" in body and "5 VLD" in body and "UTC" in body
+      and "parse_mode" not in p, body)
+
+n = len(sent)
+tg_down[0] = True
+r = new_pool(OA, g_plain, channel_id=ch_id)
+tg_down[0] = False
+p2 = r.get_json()
+with app.app_context():
+    check("Telegram недоступен -> раунд всё равно создан", r.status_code == 200
+          and db.session.get(Pool, p2["id"]).status == "live", r.status_code)
+check("без картинки — обычное сообщение", any(m == "sendMessage" and q["chat_id"] == CH for m, q in sent[n:]))
+
+# ставки двух игроков в первом раунде, затем время выходит -> итог в канале
+c.post(f"/api/pools/{p1['id']}/stake", headers=OB, json={"amount": 10})
+c.post(f"/api/pools/{p1['id']}/stake", headers=OC, json={"amount": 15})
+with app.app_context():
+    for pid in (p1["id"], p2["id"]):
+        db.session.get(Pool, pid).ends_at = datetime.utcnow() - timedelta(seconds=1)
+    db.session.commit()
+n = len(sent)
+c.get("/api/pools", headers=OA)
+results = [q for m, q in sent[n:] if m == "sendMessage" and q["chat_id"] == CH]
+with app.app_context():
+    fin = db.session.get(Pool, p1["id"])
+    wname = V.display_name(fin.winner)
+won = [q["text"] for q in results if "Победитель" in q["text"]]
+check("раунд завершён -> в канале итог: победитель и банк",
+      fin.status == "finished" and len(won) == 1 and wname in won[0] and "25 VLD" in won[0], [q["text"] for q in results])
+check("раунд без игроков -> в канале «Раунд отменён — ставки возвращены»",
+      sum("Раунд отменён — ставки возвращены" in q["text"] for q in results) == 1, len(results))
+n = len(sent)
+c.get("/api/pools", headers=OA)
+check("итог публикуется один раз", not [1 for m, q in sent[n:] if q.get("chat_id") == CH])
+
+# ошибка Telegram при публикации итога не ломает расчёт
+r = new_pool(OA, g_plain2, channel_id=ch_id)
+p3 = r.get_json()
+with app.app_context():
+    db.session.get(Pool, p3["id"]).ends_at = datetime.utcnow() - timedelta(seconds=1)
+    db.session.commit()
+tg_down[0] = True
+r = c.get("/api/pools", headers=OA)
+tg_down[0] = False
+with app.app_context():
+    check("Telegram упал при итоге -> раунд всё равно отменён и сохранён",
+          r.status_code == 200 and db.session.get(Pool, p3["id"]).status == "cancelled")
+
+# бота убрали из канала -> канал неактивен, раунд в него не создать
+c.post("/api/telegram_payment", headers=HOOK, json=mcm(CH, "left"))
+with app.app_context():
+    check("бота убрали -> канал неактивен", Channel.query.filter_by(chat_id=CH).first().active is False)
+    gx = GiftItem(owner_id=db.session.get(Pool, p3["id"]).organizer_id, name="X", emoji="🎁", status="held")
+    db.session.add(gx)
+    db.session.commit()
+    gx_id = gx.id
+r = new_pool(OA, gx_id, channel_id=ch_id)
+check("неактивный канал -> 400", r.status_code == 400 and "Канал не найден" in r.get_json()["error"])
+r = c.post("/api/channels/link", headers=OA, json={"chat_id": CH})
+check("неактивный канал не привязать -> 404", r.status_code == 404, r.status_code)
+
+# бот снова админ (добавил другой человек) — перепривязать может только проверенный админ
+c.post("/api/telegram_payment", headers=HOOK, json=mcm(CH, "administrator", by=990000951, can_post_messages=True))
+member_status[990000951] = "administrator"
+r = c.post("/api/channels/link", headers=OB, json={"chat_id": CH})
+check("канал переходит к последнему проверенному админу",
+      r.status_code == 200 and c.get("/api/channels", headers=OA).get_json()["items"] == []
+      and [x["chat_id"] for x in c.get("/api/channels", headers=OB).get_json()["items"]] == [CH])
+c.post("/api/telegram_payment", headers=HOOK, json=mcm(CH, "administrator", can_post_messages=False))
+with app.app_context():
+    check("бот админ без права публикации -> канал неактивен", Channel.query.filter_by(chat_id=CH).first().active is False)
+wipe()
 srv.shutdown()
 print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)

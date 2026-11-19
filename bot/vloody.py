@@ -21,18 +21,22 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request
+from sqlalchemy import event
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
-from models import db, User, GiftItem, Pool, PoolEntry, LedgerTx, PayoutRequest, TonDeposit
+from models import db, User, GiftItem, Pool, PoolEntry, LedgerTx, PayoutRequest, TonDeposit, Channel
 from bot.cases import get_or_create_user, err
 from bot import envfile
 from bot.giftart import SLUG_RE
@@ -42,6 +46,7 @@ from bot.auth import (
 )
 
 vloody_bp = Blueprint("vloody_api", __name__)
+log = logging.getLogger("vloody")
 
 # ------------------------------------------------------------------ экономика
 COMMISSION_RATE = 0.045         # платформа берёт 4.5% банка, организатор — остальное
@@ -228,6 +233,7 @@ def _finish(pool, winner_id, result):
     pool.commission = commission
     # ref уникален в БД: вторая комиссия по тому же раунду физически не запишется
     pay(None, commission, "commission", f"Комиссия раунда #{pool.id}", ref=pool_ref(pool, "commission"))
+    _queue_result(pool)
 
 
 CANCEL_REASONS = ("no_players", "not_cracked", "organizer", "admin")
@@ -239,6 +245,7 @@ def _cancel(pool, reason, extra=None):
     pool.status, pool.finished_at = "cancelled", now()
     pool.result = json.dumps({**(extra or {}), "cancel_reason": reason})
     pool.gift.status = "held"
+    _queue_result(pool)
 
 
 def _refund_all(pool, reason):
@@ -305,6 +312,137 @@ def _auto_settle():
     settle_due()
 
 
+@vloody_bp.after_request
+def _post_results(resp):
+    flush_channel_posts()           # итоги раундов, уже записанные в БД, — в каналы организаторов
+    return resp
+
+
+# ------------------------------------------------------------------ публикации в каналах
+MODE_LABELS = {"wheel": "🎡 Колесо", "vault": "🔐 Сейф", "auction": "🔨 Аукцион"}
+CHANNEL_ERR = "Канал не найден или бот в нём не админ"
+BOT_USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{5,32}$")
+
+
+def _queue_result(pool):
+    """Итог раунда публикуется только после фиксации в БД: копим id до commit, при rollback — забываем."""
+    if pool.channel_id:
+        db.session.info.setdefault("ch_pending", []).append(pool.id)
+
+
+@event.listens_for(Session, "after_commit")
+def _ch_committed(session):
+    pending = session.info.pop("ch_pending", None)
+    if pending:
+        session.info.setdefault("ch_ready", []).extend(pending)
+
+
+@event.listens_for(Session, "after_rollback")
+def _ch_rolled_back(session):
+    session.info.pop("ch_pending", None)
+
+
+def flush_channel_posts():
+    ready = db.session.info.pop("ch_ready", None)
+    for pid in dict.fromkeys(ready or ()):
+        try:
+            pool = db.session.get(Pool, pid)
+            if pool:
+                post_pool_result(pool)
+        except Exception:               # публикация не должна ломать ответ игроку
+            log.exception("channel result post failed for pool %s", pid)
+
+
+def _channel_for(pool):
+    ch = db.session.get(Channel, pool.channel_id) if pool.channel_id else None
+    return ch if ch and ch.active else None
+
+
+def _tg_post(method, payload):
+    try:
+        tg_api(method, payload)
+        return True
+    except Exception as e:
+        log.warning("telegram %s to %s failed: %s", method, payload.get("chat_id"), e)
+        return False
+
+
+def pool_post_text(pool):
+    gift, cur = pool.gift, pool.currency or "VLD"
+    price = "Цена попытки" if pool.mode == "vault" else "Минимальная ставка"
+    end = pool.ends_at.strftime("%H:%M UTC, %d.%m") if pool.ends_at else "—"
+    lines = [f"🎁 Разыгрывается {gift.emoji} {gift.name}",
+             f"{MODE_LABELS.get(pool.mode, pool.mode)} · валюта {cur}",
+             f"{price}: {fmt_cur(pool.min_stake, cur)}",
+             f"⏳ До {end}",
+             f"Организатор: {display_name(pool.organizer)} · раунд #{pool.id}"]
+    return "\n".join(lines)
+
+
+def post_pool_to_channel(pool):
+    """Анонс нового раунда в канале организатора. Ошибки Telegram глотаются: раунд уже создан."""
+    ch = _channel_for(pool)
+    if not ch:
+        return False
+    payload = {"chat_id": ch.chat_id}
+    bot = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
+    if BOT_USERNAME_RE.fullmatch(bot):
+        payload["reply_markup"] = {"inline_keyboard": [[{
+            "text": "🎯 Участвовать", "url": f"https://t.me/{bot}?startapp=pool_{pool.id}"}]]}
+    text = pool_post_text(pool)
+    public = envfile.current("PUBLIC_URL").strip().rstrip("/")
+    slug = clean_slug(pool.gift.slug)
+    if public.startswith("https://") and slug:
+        if _tg_post("sendPhoto", {**payload, "photo": f"{public}/gift-art/{slug}.jpg", "caption": text}):
+            return True
+    return _tg_post("sendMessage", {**payload, "text": text})
+
+
+def post_pool_result(pool):
+    """Итог раунда в канале: победитель и банк или отмена с возвратом ставок."""
+    ch = _channel_for(pool)
+    if not ch or pool.status == "live":
+        return False
+    gift, cur = pool.gift, pool.currency or "VLD"
+    head = f"Раунд #{pool.id} · {gift.emoji} {gift.name}"
+    if pool.status == "finished" and pool.winner_id:
+        text = (f"🏁 {head}\n🏆 Победитель: {display_name(pool.winner)}\n"
+                f"💰 Банк: {fmt_cur(pool.bank or 0, cur)}")
+    else:
+        text = f"{head}\nРаунд отменён — ставки возвращены"
+    return _tg_post("sendMessage", {"chat_id": ch.chat_id, "text": text})
+
+
+def _channel_member_update(upd):
+    """my_chat_member: бота сделали админом канала (с правом публикации) или убрали оттуда."""
+    chat = upd.get("chat") or {}
+    if chat.get("type") != "channel" or not isinstance(chat.get("id"), int):
+        return {"status": "ignored"}
+    new = upd.get("new_chat_member") or {}
+    active = new.get("status") == "administrator" and new.get("can_post_messages") is not False
+    ch = Channel.query.filter_by(chat_id=chat["id"]).first()
+    if not ch:
+        if not active:
+            return {"status": "ignored"}
+        ch = Channel(chat_id=chat["id"], created_at=now())
+        db.session.add(ch)
+    ch.title = clean_text(chat.get("title") or "", 128)
+    username = str(chat.get("username") or "")
+    ch.username = username if USERNAME_RE.fullmatch(username) else None
+    ch.active = active
+    if active:
+        sender = (upd.get("from") or {}).get("id")
+        ch.added_by_tg = sender if isinstance(sender, int) else None
+    else:
+        ch.owner_id = None       # вернут бота — привязать заново сможет только проверенный админ
+    try:
+        db.session.commit()
+    except IntegrityError:       # параллельное событие о том же канале успело раньше
+        db.session.rollback()
+        return {"status": "duplicate"}
+    return {"status": "channel_active" if active else "channel_inactive"}
+
+
 # ------------------------------------------------------------------ сериализация
 def pool_dict(pool, user, detail=False):
     cfg = json.loads(pool.cfg or "{}")
@@ -334,6 +472,7 @@ def pool_dict(pool, user, detail=False):
                     "is_me": pool.winner_id == uid} if pool.winner_id else None),
         "commission_rate": COMMISSION_RATE,
         "currency": pool.currency or "VLD", "create_fee": CREATE_FEE_VDT,
+        "channel_id": pool.channel_id,
     }
     if pool.status == "cancelled":
         res = json.loads(pool.result or "{}")
@@ -414,6 +553,15 @@ def pool_create():
     lo, hi = MIN_STAKE_RANGE[currency]
     if not lo <= min_stake <= hi:
         return err(f"Ставка от {fmt_cur(lo, currency)} до {fmt_cur(hi, currency)}", 400)
+    channel = None
+    if data.get("channel_id") not in (None, "", 0):
+        try:
+            channel = db.session.get(Channel, _int_arg(data.get("channel_id")))
+        except (TypeError, ValueError):
+            channel = None
+        # публикуем только в свой канал, где бот сейчас админ
+        if not channel or channel.owner_id != user.id or not channel.active:
+            return err(CHANNEL_ERR, 400)
 
     # эскроу: раунд создаётся только из подарка, который уже лежит у платформы
     gift = GiftItem.query.filter_by(id=gift_id, owner_id=user.id).with_for_update().first()
@@ -450,13 +598,59 @@ def pool_create():
     pool = Pool(organizer_id=user.id, gift_id=gift.id, mode=mode, currency=currency, min_stake=min_stake,
                 # сейф живёт ровно 6 часов, колесо и аукцион — выбранное время (не больше 6 часов)
                 ends_at=created + (timedelta(minutes=minutes) if minutes else ROUND_LIFE),
-                seed=seed, seed_hash=seed_hash, cfg=json.dumps(cfg), created_at=created)
+                seed=seed, seed_hash=seed_hash, cfg=json.dumps(cfg), created_at=created,
+                channel_id=channel.id if channel else None)
     db.session.add(pool)
     db.session.flush()
     move_vdt(user, -CREATE_FEE_VDT, "create_fee", f"Сбор за запуск раунда #{pool.id}")
     move_vdt(None, CREATE_FEE_VDT, "create_fee", f"Сбор за запуск раунда #{pool.id}", ref=pool_ref(pool, "fee"))
     db.session.commit()
-    return jsonify(pool_dict(pool, user, detail=True))
+    out = pool_dict(pool, user, detail=True)
+    if channel:
+        try:
+            post_pool_to_channel(pool)          # после commit: сбой Telegram раунд не откатит
+        except Exception:
+            log.exception("channel post failed for pool %s", pool.id)
+    return jsonify(out)
+
+
+# ================================================================== КАНАЛЫ
+@vloody_bp.route("/api/channels", methods=["GET"])
+def channels_mine():
+    user = me()
+    mine = Channel.query.filter_by(owner_id=user.id).order_by(Channel.id).all()
+    pending = (Channel.query.filter(Channel.added_by_tg == user.telegram_id, Channel.active == True,  # noqa: E712
+                                    db.or_(Channel.owner_id == None, Channel.owner_id != user.id))  # noqa: E711
+               .order_by(Channel.id).all())
+    return jsonify({"items": [ch.to_dict() for ch in mine], "pending": [ch.to_dict() for ch in pending]})
+
+
+@vloody_bp.route("/api/channels/link", methods=["POST"])
+def channel_link():
+    """Привязка канала: бот там админ (знаем из my_chat_member) И я сам админ — спрашиваем у Telegram."""
+    user = me()
+    if user.is_banned:
+        return err("Доступ заблокирован", 403)
+    try:
+        chat_id = _int_arg((request.get_json(silent=True) or {}).get("chat_id"))
+    except (TypeError, ValueError):
+        return err("Неверный канал", 400)
+    ch = Channel.query.filter_by(chat_id=chat_id).first()
+    if not ch or not ch.active:
+        return err("Канал не найден — сначала добавь бота администратором канала", 404)
+    try:
+        res = tg_api("getChatMember", {"chat_id": chat_id, "user_id": user.telegram_id})
+        status = ((res or {}).get("result") or {}).get("status") if (res or {}).get("ok") else None
+    except urllib.error.HTTPError:          # Telegram: такого участника в канале нет
+        status = None
+    except Exception:
+        log.exception("getChatMember failed for %s", chat_id)
+        return err("Не удалось проверить права в канале, попробуй позже", 502)
+    if status not in ("creator", "administrator"):
+        return err("Привязать канал может только его администратор", 403)
+    ch.owner_id = user.id                   # последний проверенный админ
+    db.session.commit()
+    return jsonify({"channel": ch.to_dict()})
 
 
 @vloody_bp.route("/api/pools/<int:pool_id>/cancel", methods=["POST"])
@@ -1119,6 +1313,9 @@ def handle_payment_update(update):
         except Exception:
             pass
         return {"ok": True}
+
+    if update.get("my_chat_member"):
+        return _channel_member_update(update["my_chat_member"])
 
     msg = update.get("message") or {}
     text = msg.get("text") or ""

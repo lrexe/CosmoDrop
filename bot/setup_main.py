@@ -97,7 +97,8 @@ def main(argv):
 
     tg(token, "setWebhook", url=url + "/api/telegram_payment",
        secret_token=os.environ["TELEGRAM_WEBHOOK_SECRET"],
-       allowed_updates=["message", "pre_checkout_query"], drop_pending_updates=True)
+       # my_chat_member — бота сделали админом канала (или убрали): так узнаём каналы для публикации
+       allowed_updates=["message", "pre_checkout_query", "my_chat_member"], drop_pending_updates=True)
     tg(token, "setChatMenuButton", menu_button={"type": "web_app", "text": "Vloody", "web_app": {"url": url + "/"}})
     from bot.vloody import BOT_COMMANDS, BOT_SHORT_DESC, BOT_LONG_DESC
     tg(token, "setMyCommands", commands=BOT_COMMANDS)
