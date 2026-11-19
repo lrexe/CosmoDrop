@@ -9,6 +9,7 @@ ROOT = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(os.path.dirname(os.
 sys.path.insert(0, ROOT); os.chdir(ROOT)
 from app import app                                            # noqa: E402
 from models import db, User, GiftItem, Pool, PoolEntry, LedgerTx, PayoutRequest  # noqa: E402
+from bot.vloody import pool_ref, payout_ref                  # noqa: E402
 
 IDS = {"org": 990000101, "bob": 990000102, "cat": 990000103, "dan": 990000104}
 START = 10000
@@ -220,9 +221,19 @@ with app.app_context():
     check("платформа в плюсе и ничего не доплачивала", rev > 0, rev)
     print(f"     доход платформы за прогон: {rev} ⭐ (комиссии раундов, перевода и вывода)")
 
-    # уборка
+    # уборка; проводки платформы — только этого прогона, по точным ключам
     uids = [u.id for u in users]
-    pids = [p.id for p in Pool.query.filter(Pool.organizer_id.in_(uids)).all()]
+    pools = Pool.query.filter(Pool.organizer_id.in_(uids)).all()
+    pids = [p.id for p in pools]
+    plat_refs = [pool_ref(p, w) for p in pools for w in ("fee", "commission")]
+    plat_refs += [x.ref.rsplit(":", 1)[0] + ":fee" for x in LedgerTx.query.filter(
+        LedgerTx.user_id.in_(uids), LedgerTx.kind == "transfer_out").all() if x.ref]
+    plat_refs += [payout_ref(q, "fee") for q in PayoutRequest.query.filter(PayoutRequest.user_id.in_(uids)).all()]
+    plat_q = LedgerTx.query.filter(LedgerTx.user_id == None, LedgerTx.ref.in_(plat_refs))  # noqa: E711
+    found = plat_q.count()
+    plat_q.delete(synchronize_session=False)
+    # 4 сбора за запуск + 3 комиссии раундов (колесо, сейф, аукцион) + перевод + выплата r2
+    check("уборка: все 9 проводок платформы этого прогона найдены по ключу", found == 9, found)
     PoolEntry.query.filter(PoolEntry.pool_id.in_(pids)).delete(synchronize_session=False)
     Pool.query.filter(Pool.id.in_(pids)).delete(synchronize_session=False)
     GiftItem.query.filter(GiftItem.tg_gift_id.in_(["tg-g1", "tg-g2", "tg-g3"])).delete(synchronize_session=False)

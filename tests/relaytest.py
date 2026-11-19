@@ -164,6 +164,8 @@ with app.app_context():
     db.session.commit()
 gift_id = a_inv[0]["id"]
 pool = c.post("/api/pools", headers=A, json={"mode": "wheel", "gift_id": gift_id, "min_stake": 5, "duration_min": 15}).get_json()
+with app.app_context():                 # ключ сбора — по seed_hash при создании (ниже seed подменяется)
+    plat_refs = [pool_ref(db.session.get(Pool, pool["id"]), "fee")]
 check("раунд отдаёт image/anim подарка", pool.get("image") == "/gift-art/plushpepe-1337.jpg"
       and pool.get("anim") == "/gift-art/plushpepe-1337.json", (pool.get("image"), pool.get("anim")))
 c.post(f"/api/pools/{pool['id']}/stake", headers=B, json={"amount": 100})
@@ -175,6 +177,7 @@ with app.app_context():
         if int(hmac.new(seed, f"{p.id}:105:2".encode(), hashlib.sha256).hexdigest(), 16) % 105 < 100:
             break
     p.seed, p.seed_hash = seed.hex(), hashlib.sha256(seed).hexdigest()
+    plat_refs.append(pool_ref(p, "commission"))
     p.ends_at = datetime.utcnow() - timedelta(seconds=1)
     db.session.commit()
 done = c.get(f"/api/pools/{pool['id']}", headers=B).get_json()
@@ -248,16 +251,22 @@ with app.app_context():
     uids = [u.id for u in users]
     pools = Pool.query.filter(Pool.organizer_id.in_(uids)).all()
     pids = [p.id for p in pools]
-    for p in pools:
-        LedgerTx.query.filter(LedgerTx.user_id == None,                   # noqa: E711
-                              LedgerTx.ref.like(pool_ref(p, "") + "%")).delete(synchronize_session=False)
+    gids = [g.id for g in GiftItem.query.filter(GiftItem.owner_id.in_(uids)).all()]
+    # проводки платформы — только свои: по точному ключу раунда и точному названию резерва за свои подарки
+    found = LedgerTx.query.filter(LedgerTx.user_id == None, LedgerTx.ref.in_(plat_refs)).count()  # noqa: E711
+    LedgerTx.query.filter(LedgerTx.user_id == None, LedgerTx.ref.in_(plat_refs)).delete(synchronize_session=False)  # noqa: E711
+    fee_titles = [t + str(i) for i in gids for t in ("Резерв на передачу подарка #", "Возврат резерва на передачу подарка #")]
+    LedgerTx.query.filter(LedgerTx.user_id == None, LedgerTx.kind == "gift_fee",            # noqa: E711
+                          LedgerTx.title.in_(fee_titles)).delete(synchronize_session=False)
+    left = LedgerTx.query.filter(LedgerTx.user_id == None, db.or_(LedgerTx.ref.in_(plat_refs),  # noqa: E711
+                                                                 LedgerTx.title.in_(fee_titles))).count()
     PoolEntry.query.filter(PoolEntry.pool_id.in_(pids)).delete(synchronize_session=False)
     Pool.query.filter(Pool.id.in_(pids)).delete(synchronize_session=False)
     GiftItem.query.filter(GiftItem.owner_id.in_(uids)).delete(synchronize_session=False)
     LedgerTx.query.filter(LedgerTx.user_id.in_(uids)).delete(synchronize_session=False)
-    LedgerTx.query.filter(LedgerTx.user_id == None, LedgerTx.kind == "gift_fee").delete(synchronize_session=False)  # noqa: E711
     User.query.filter(User.id.in_(uids)).delete(synchronize_session=False)
     db.session.commit()
+check("уборка: найдены и удалены обе проводки платформы по раунду (сбор и комиссия)", found == 2 and left == 0, (found, left))
 tg_srv.shutdown(); api_srv.shutdown()
 print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)

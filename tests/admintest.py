@@ -134,7 +134,11 @@ check("после снятия блокировки верный секрет р
 with app.app_context():
     users = User.query.filter(User.telegram_id.in_([ORG, P1, P2])).all()
     uids = [u.id for u in users]
-    pids = [p.id for p in Pool.query.filter(Pool.organizer_id.in_(uids)).all()]
+    pools = Pool.query.filter(Pool.organizer_id.in_(uids)).all()
+    pids = [p.id for p in pools]
+    pool_refs = [V.pool_ref(p, w) for p in pools for w in ("fee", "commission")]
+    found = LedgerTx.query.filter(LedgerTx.user_id == None, LedgerTx.ref.in_(pool_refs)).count()  # noqa: E711
+    LedgerTx.query.filter(LedgerTx.user_id == None, LedgerTx.ref.in_(pool_refs)).delete(synchronize_session=False)  # noqa: E711
     PoolEntry.query.filter(PoolEntry.pool_id.in_(pids)).delete(synchronize_session=False)
     Pool.query.filter(Pool.id.in_(pids)).delete(synchronize_session=False)
     GiftItem.query.filter(GiftItem.owner_id.in_(uids)).delete(synchronize_session=False)
@@ -144,5 +148,6 @@ with app.app_context():
     LedgerTx.query.filter(LedgerTx.user_id == None, LedgerTx.ref == fee_ref).delete(synchronize_session=False)  # noqa: E711
     User.query.filter(User.id.in_(uids)).delete(synchronize_session=False)
     db.session.commit()
+check("уборка: сборы за запуск обоих раундов найдены по ключу и удалены", found == 2, found)
 print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)
