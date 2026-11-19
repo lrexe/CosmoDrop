@@ -43,14 +43,13 @@ from bot.auth import (
 vloody_bp = Blueprint("vloody_api", __name__)
 
 # ------------------------------------------------------------------ экономика
-COMMISSION_RATE = 0.10          # платформа берёт 10% банка, организатор — 90%
+COMMISSION_RATE = 0.045         # платформа берёт 4.5% банка, организатор — остальное
 REF_RATE = 0.01                 # рефереру — 1% ставок друга (из комиссии платформы)
 TRANSFER_MIN = 150
 TRANSFER_FEE_RATE = 0.10
 PAYOUT_MIN = 100
 PAYOUT_FEE_RATE = 0.20            # вывод в Telegram Stars
 PAYOUT_FEE_RATE_TON = 0.10        # вывод в TON
-MAX_STAKE = 100000
 
 # ---- VLD: единая внутренняя валюта. Покупается за Stars или TON.
 STARS_TO_VLD = 0.95               # 100 ⭐ -> 95 VLD (5% — комиссия платформы)
@@ -67,9 +66,13 @@ START_PARAM_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 TON_ADDRESS_RE = re.compile(r"^(?:[EUk0]Q[A-Za-z0-9_-]{46}|-?\d:[0-9a-fA-F]{64})$")
 
 MODES = ("wheel", "vault", "auction")
-DURATIONS_MIN = (15, 30, 60, 360, 720, 1440)
+DURATIONS_MIN = (15, 30, 60, 180, 360)
+ROUND_LIFE = timedelta(hours=6)       # сейф живёт 6 часов; колесо и аукцион — не дольше
+CREATE_FEE_VDT = 100                  # 0.1 VDT за запуск раунда, не возвращается
 VAULT_SIZES = (25, 50, 100, 125)
-MIN_STAKE_RANGE = (1, 10000)
+# в единицах валюты (VDT — милли): допустимая минимальная ставка/цена билета и потолок одной ставки
+MIN_STAKE_RANGE = {"VLD": (1, 10000), "VDT": (10, 100000)}
+MAX_STAKE = {"VLD": 100000, "VDT": 100000}
 ARTS = ("a1", "a2", "a3", "a4")
 
 # (название, эмодзи, slug) — каждый slug проверен на CDN (nft.fragment.com/gift/<slug>.medium.jpg -> 200)
@@ -106,6 +109,7 @@ def display_name(u):
 
 def lock(user):
     """Блокирует строку пользователя на время денежной операции (PostgreSQL)."""
+    db.session.flush()            # иначе refresh затрёт ещё не записанные изменения этой же строки
     db.session.refresh(user, with_for_update=True)
     return user
 
@@ -170,6 +174,11 @@ def bump_activity(user, staked):
 
 
 # ------------------------------------------------------------------ завершение раундов
+def pool_ref(pool, what):
+    """Ключ проводки платформы по раунду. seed_hash в ключе — id раунда в SQLite может повториться."""
+    return f"pool:{pool.id}:{pool.seed_hash[:16]}:{what}"
+
+
 def _finish(pool, winner_id, result):
     entries = PoolEntry.query.filter_by(pool_id=pool.id).all()
     bank = sum(e.amount for e in entries)
@@ -185,9 +194,11 @@ def _finish(pool, winner_id, result):
     gift.owner_id, gift.status, gift.source = winner_id, "held", "win"
 
     title = f"{gift.emoji} {gift.name}"
+    pay = mover(pool.currency)                 # всё — в валюте раунда, никаких пересчётов
     organizer = lock(pool.organizer)
-    move(organizer, payout, "organizer_payout", f"Ставки раунда #{pool.id} · {title}")
-    organizer.total_earned = (organizer.total_earned or 0) + payout
+    pay(organizer, payout, "organizer_payout", f"Ставки раунда #{pool.id} · {title}")
+    if pool.currency == "VLD":                 # статистика заработка ведётся в VLD
+        organizer.total_earned = (organizer.total_earned or 0) + payout
 
     # реферальные — из комиссии платформы, не из кармана
     per_user = {}
@@ -200,26 +211,54 @@ def _finish(pool, winner_id, result):
             continue
         referrer = User.query.filter_by(telegram_id=staker.referred_by).first()
         if referrer and not referrer.is_banned:
-            move(lock(referrer), bonus, "referral", f"Реферал {display_name(staker)} · раунд #{pool.id}")
-            referrer.referral_earned = (referrer.referral_earned or 0) + bonus
+            pay(lock(referrer), bonus, "referral", f"Реферал {display_name(staker)} · раунд #{pool.id}")
+            if pool.currency == "VLD":
+                referrer.referral_earned = (referrer.referral_earned or 0) + bonus
             commission -= bonus
 
     pool.commission = commission
-    move(None, commission, "commission", f"Комиссия раунда #{pool.id}")
+    # ref уникален в БД: вторая комиссия по тому же раунду физически не запишется
+    pay(None, commission, "commission", f"Комиссия раунда #{pool.id}", ref=pool_ref(pool, "commission"))
 
 
-def _cancel(pool):
+CANCEL_REASONS = ("no_players", "not_cracked", "organizer", "admin")
+
+
+def _cancel(pool, reason, extra=None):
+    """Раунд отменён: подарок возвращается организатору. Сбор за запуск не возвращается."""
+    assert reason in CANCEL_REASONS
     pool.status, pool.finished_at = "cancelled", now()
+    pool.result = json.dumps({**(extra or {}), "cancel_reason": reason})
     pool.gift.status = "held"
 
 
+def _refund_all(pool, reason):
+    """Возвращает каждую ставку ровно в той сумме и валюте, в какой она была сделана."""
+    refund = mover(pool.currency)
+    refunded = 0
+    for e in PoolEntry.query.filter_by(pool_id=pool.id).order_by(PoolEntry.id).all():
+        staker = lock(db.session.get(User, e.user_id))
+        refund(staker, e.amount, "refund", f"Возврат ставки · раунд #{pool.id} отменён")
+        if pool.currency == "VLD":
+            staker.total_spent = max(0, (staker.total_spent or 0) - e.amount)
+        refunded += e.amount
+    pool.bank = 0
+    _cancel(pool, reason, {"refunded": refunded})
+    return refunded
+
+
 def settle(pool):
-    """Подводит итог раунда, у которого вышло время."""
-    if pool.status != "live":
+    """Подводит итог раунда, у которого вышло время. Повторный вызов ничего не делает."""
+    db.session.flush()
+    db.session.refresh(pool, with_for_update=True)     # статус — под блокировкой строки
+    if pool.status != "live" or not pool.ends_at or pool.ends_at > now():
         return
     entries = PoolEntry.query.filter_by(pool_id=pool.id).order_by(PoolEntry.id).all()
-    if not entries:
-        return _cancel(pool)
+    if pool.mode == "vault":
+        # вскрытый сейф завершается сразу в vault_try; живой по истечении 6 часов — не вскрыт
+        return _refund_all(pool, "not_cracked")
+    if len({e.user_id for e in entries}) < 2:
+        return _refund_all(pool, "no_players")
 
     if pool.mode == "wheel":
         total = sum(e.amount for e in entries)
@@ -285,7 +324,12 @@ def pool_dict(pool, user, detail=False):
         "winner": ({"name": display_name(pool.winner), "avatar": pool.winner.avatar, "photo": pool.winner.photo,
                     "is_me": pool.winner_id == uid} if pool.winner_id else None),
         "commission_rate": COMMISSION_RATE,
+        "currency": pool.currency or "VLD", "create_fee": CREATE_FEE_VDT,
     }
+    if pool.status == "cancelled":
+        res = json.loads(pool.result or "{}")
+        # у старых отменённых раундов причины нет: админ помечал by=admin, остальные были пустыми
+        d["cancel_reason"] = res.get("cancel_reason") or ("admin" if res.get("by") == "admin" else "no_players")
     if pool.mode == "vault":
         d["vault_max"] = cfg.get("max")
         d["taken"] = len(entries)
@@ -350,20 +394,24 @@ def pool_create():
     mode = data.get("mode")
     if mode not in MODES:
         return err("Неизвестный режим", 400)
+    currency = data.get("currency") or "VLD"
+    if currency not in CURRENCIES:
+        return err("Неизвестная валюта", 400)
     try:
         min_stake = int(data.get("min_stake"))
         gift_id = int(data.get("gift_id"))
     except (TypeError, ValueError):
         return err("Заполни настройки раунда", 400)
-    if not MIN_STAKE_RANGE[0] <= min_stake <= MIN_STAKE_RANGE[1]:
-        return err("Недопустимая ставка", 400)
+    lo, hi = MIN_STAKE_RANGE[currency]
+    if not lo <= min_stake <= hi:
+        return err(f"Ставка от {fmt_cur(lo, currency)} до {fmt_cur(hi, currency)}", 400)
 
     # эскроу: раунд создаётся только из подарка, который уже лежит у платформы
     gift = GiftItem.query.filter_by(id=gift_id, owner_id=user.id).with_for_update().first()
     if not gift or gift.status != "held":
         return err("Сначала передай подарок боту-хранителю — раунд создаётся только из инвентаря", 400)
 
-    cfg, ends_at = {}, None
+    cfg, minutes = {}, None
     seed = secrets.token_hex(32)
     if mode == "vault":
         try:
@@ -383,14 +431,21 @@ def pool_create():
             return err("Выбери время окончания", 400)
         if minutes not in DURATIONS_MIN:
             return err("Недопустимая длительность", 400)
-        ends_at = now() + timedelta(minutes=minutes)
         seed_hash = hashlib.sha256(bytes.fromhex(seed)).hexdigest()
 
+    if (lock(user).vdt_balance or 0) < CREATE_FEE_VDT:
+        return err("Нужно 0.1 VDT на запуск раунда — пополни баланс TON", 400)
+
     gift.status = "locked"
-    pool = Pool(organizer_id=user.id, gift_id=gift.id, mode=mode, min_stake=min_stake,
-                ends_at=ends_at, seed=seed, seed_hash=seed_hash, cfg=json.dumps(cfg),
-                created_at=now())
+    created = now()
+    pool = Pool(organizer_id=user.id, gift_id=gift.id, mode=mode, currency=currency, min_stake=min_stake,
+                # сейф живёт ровно 6 часов, колесо и аукцион — выбранное время (не больше 6 часов)
+                ends_at=created + (timedelta(minutes=minutes) if minutes else ROUND_LIFE),
+                seed=seed, seed_hash=seed_hash, cfg=json.dumps(cfg), created_at=created)
     db.session.add(pool)
+    db.session.flush()
+    move_vdt(user, -CREATE_FEE_VDT, "create_fee", f"Сбор за запуск раунда #{pool.id}")
+    move_vdt(None, CREATE_FEE_VDT, "create_fee", f"Сбор за запуск раунда #{pool.id}", ref=pool_ref(pool, "fee"))
     db.session.commit()
     return jsonify(pool_dict(pool, user, detail=True))
 
@@ -398,14 +453,14 @@ def pool_create():
 @vloody_bp.route("/api/pools/<int:pool_id>/cancel", methods=["POST"])
 def pool_cancel(pool_id):
     user = me()
-    pool = db.session.get(Pool, pool_id)
+    pool = Pool.query.filter_by(id=pool_id).with_for_update().first()
     if not pool or pool.organizer_id != user.id:
         return err("Раунд не найден", 404)
     if pool.status != "live":
         return err("Раунд уже завершён", 400)
     if PoolEntry.query.filter_by(pool_id=pool.id).count():
         return err("В раунде уже есть ставки — отменить нельзя", 400)
-    _cancel(pool)
+    _cancel(pool, "organizer")                  # сбор за запуск не возвращается
     db.session.commit()
     return jsonify({"cancelled": True})
 
@@ -426,54 +481,54 @@ def _stake_guard(pool_id, mode):
 
 
 def _place(user, pool, amount, kind, number=None):
+    """Ставка всегда в валюте раунда: валюта из тела запроса не читается вовсе."""
     title = f"{pool.gift.emoji} {pool.gift.name} · раунд #{pool.id}"
-    move(user, -amount, kind, title)
+    mover(pool.currency)(user, -amount, kind, title)
     db.session.add(PoolEntry(pool_id=pool.id, user_id=user.id, amount=amount,
                              number=number, created_at=now()))
     pool.bank = (pool.bank or 0) + amount
-    bump_activity(user, amount)
+    # опыт и статистика ставок ведутся в VLD; VDT-ставка засчитывает только активность дня
+    bump_activity(user, amount if pool.currency == "VLD" else 0)
 
 
-def _amount(data, minimum):
+def _amount(data, pool):
+    cur = pool.currency
     try:
         amount = int(data.get("amount"))
     except (TypeError, ValueError):
         return None, err("Неверная сумма", 400)
+    minimum = max(pool.min_stake, MIN_STAKE_RANGE[cur][0])
     if amount < minimum:
-        return None, err(f"Минимальная ставка — {minimum} VLD", 400)
-    if amount > MAX_STAKE:
-        return None, err(f"Максимальная ставка — {MAX_STAKE} VLD", 400)
+        return None, err(f"Минимальная ставка — {fmt_cur(minimum, cur)}", 400)
+    if amount > MAX_STAKE[cur]:
+        return None, err(f"Максимальная ставка — {fmt_cur(MAX_STAKE[cur], cur)}", 400)
     return amount, None
+
+
+def _stake_or_bid(pool_id, mode, kind):
+    user, pool, e = _stake_guard(pool_id, mode)
+    if e:
+        return e
+    amount, e = _amount(request.get_json(silent=True) or {}, pool)
+    if e:
+        return e
+    if balance_of(user, pool.currency) < amount:
+        return err(f"Недостаточно {pool.currency}", 400)
+    _place(user, pool, amount, kind)
+    db.session.commit()
+    return jsonify({"balance": user.stars_balance, "balances": {"VLD": user.stars_balance or 0,
+                                                                "VDT": user.vdt_balance or 0},
+                    "pool": pool_dict(pool, user, detail=True)})
 
 
 @vloody_bp.route("/api/pools/<int:pool_id>/stake", methods=["POST"])
 def wheel_stake(pool_id):
-    user, pool, e = _stake_guard(pool_id, "wheel")
-    if e:
-        return e
-    amount, e = _amount(request.get_json(silent=True) or {}, pool.min_stake)
-    if e:
-        return e
-    if user.stars_balance < amount:
-        return err("Недостаточно VLD", 400)
-    _place(user, pool, amount, "stake")
-    db.session.commit()
-    return jsonify({"balance": user.stars_balance, "pool": pool_dict(pool, user, detail=True)})
+    return _stake_or_bid(pool_id, "wheel", "stake")
 
 
 @vloody_bp.route("/api/pools/<int:pool_id>/bid", methods=["POST"])
 def auction_bid(pool_id):
-    user, pool, e = _stake_guard(pool_id, "auction")
-    if e:
-        return e
-    amount, e = _amount(request.get_json(silent=True) or {}, pool.min_stake)
-    if e:
-        return e
-    if user.stars_balance < amount:
-        return err("Недостаточно VLD", 400)
-    _place(user, pool, amount, "bid")
-    db.session.commit()
-    return jsonify({"balance": user.stars_balance, "pool": pool_dict(pool, user, detail=True)})
+    return _stake_or_bid(pool_id, "auction", "bid")
 
 
 @vloody_bp.route("/api/pools/<int:pool_id>/vault", methods=["POST"])
@@ -490,8 +545,8 @@ def vault_try(pool_id):
         return err(f"Число от 1 до {cfg['max']}", 400)
     if PoolEntry.query.filter_by(pool_id=pool.id, number=number).first():
         return err("Это число уже занято", 400)
-    if user.stars_balance < pool.min_stake:
-        return err("Недостаточно VLD", 400)
+    if balance_of(user, pool.currency) < pool.min_stake:
+        return err(f"Недостаточно {pool.currency}", 400)
 
     _place(user, pool, pool.min_stake, "vault", number=number)
     db.session.flush()
@@ -500,6 +555,7 @@ def vault_try(pool_id):
         _finish(pool, user.id, {"secret": cfg["secret"]})
     db.session.commit()
     return jsonify({"hit": hit, "number": number, "balance": user.stars_balance,
+                    "balances": {"VLD": user.stars_balance or 0, "VDT": user.vdt_balance or 0},
                     "pool": pool_dict(pool, user, detail=True)})
 
 
@@ -908,7 +964,7 @@ HELP_TEXT = (
     "💰 Баланс — внутренняя валюта VLD. Пополнение: Telegram Stars или TON, вывод — по заявке.\n\n"
     "🎁 Подарки — принимаются уникальные (NFT) подарки. Отправь их аккаунту-хранителю "
     "(инструкция — в боте хранителя, команда /start). Подарок появится в Профиле → Инвентарь.\n\n"
-    "🎯 Раунд — подарок лежит у хранителя, игроки делают ставки. Комиссия платформы — 10% с банка.\n\n"
+    "🎯 Раунд — подарок лежит у хранителя, игроки делают ставки. Комиссия платформы — 4.5% с банка, запуск раунда — 0.1 VDT. Раунд живёт до 6 часов; если игроков меньше двух (или сейф не вскрыт) — ставки возвращаются.\n\n"
     "👥 Друзья — приглашай по реферальной ссылке из Профиля и получай процент с комиссии.\n\n"
     "Вопросы по честности — /fair"
 )
@@ -1283,15 +1339,7 @@ def admin_pool_refund(pool_id):
     pool = Pool.query.filter_by(id=pool_id).with_for_update().first()
     if not pool or pool.status != "live":
         return err("Живой раунд не найден", 404)
-    refunded = 0
-    for e in PoolEntry.query.filter_by(pool_id=pool.id).all():
-        staker = db.session.get(User, e.user_id)
-        move(lock(staker), e.amount, "refund", f"Возврат ставки · раунд #{pool.id} отменён администрацией")
-        staker.total_spent = max(0, (staker.total_spent or 0) - e.amount)
-        refunded += e.amount
-    pool.bank = 0
-    pool.result = json.dumps({"refunded": refunded, "by": "admin"})
-    _cancel(pool)
+    refunded = _refund_all(pool, "admin")       # в валюте раунда
     db.session.commit()
     return jsonify({"cancelled": True, "refunded": refunded})
 

@@ -62,11 +62,12 @@ for who in IDS:
 with app.app_context():
     for tid in IDS.values():
         User.query.filter_by(telegram_id=tid).first().stars_balance = START
+    User.query.filter_by(telegram_id=IDS["org"]).first().vdt_balance = 1000   # сбор 0.1 VDT за каждый раунд
     cat = User.query.filter_by(telegram_id=IDS["cat"]).first()
     cat.referred_by = IDS["dan"]                         # dan пригласил cat
     db.session.commit()
     rev0 = db.session.query(db.func.coalesce(db.func.sum(LedgerTx.amount), 0)).filter(
-        LedgerTx.user_id == None).scalar()               # noqa: E711
+        LedgerTx.user_id == None, LedgerTx.currency == "VLD").scalar()   # noqa: E711
 
 # ---------- эскроу
 r = post("org", "/api/pools", {"mode": "wheel", "gift_id": 999999, "min_stake": 5, "duration_min": 15})
@@ -115,7 +116,7 @@ ticket = int(hmac.new(bytes.fromhex(f["seed"]), f"{wheel['id']}:1000:2".encode()
 exp_winner = "@bob" if ticket < 300 else "@cat"
 check("победителя можно пересчитать по seed", f["result"]["ticket"] == ticket and done["winner"]["name"] == exp_winner,
       (ticket, done["winner"]["name"]))
-check("организатор получил 90% банка", bal("org") == START + 900, bal("org"))
+check("организатор получил 95.5% банка (комиссия 4.5%)", bal("org") == START + 955, bal("org"))
 check("реферер получил 1% ставок друга из комиссии", bal("dan") == START + 7, bal("dan"))
 win_who = "bob" if exp_winner == "@bob" else "cat"
 gifts = get(win_who, "/api/inventory/gifts").get_json()["gifts"]
@@ -208,7 +209,9 @@ with app.app_context():
     users = User.query.filter(User.telegram_id.in_(IDS.values())).all()
     balances = sum(u.stars_balance for u in users)
     rev = db.session.query(db.func.coalesce(db.func.sum(LedgerTx.amount), 0)).filter(
-        LedgerTx.user_id == None).scalar() - rev0       # noqa: E711
+        LedgerTx.user_id == None, LedgerTx.currency == "VLD").scalar() - rev0   # noqa: E711
+    org = next(u for u in users if u.telegram_id == IDS["org"])
+    check("за 4 раунда списано 4 × 0.1 VDT, VLD сбор не тронул", org.vdt_balance == 1000 - 4 * 100, org.vdt_balance)
     paid_out = 400                                       # ушло игроку наружу по заявке r2
     total = balances + rev + paid_out
     check("деньги сходятся: балансы + доход платформы + выплаты = внесённому",

@@ -51,11 +51,11 @@ def seed_vloody(demo_telegram_id):
     _entry(wheel, p[1], 90, mins_ago=30)
     _entry(wheel, p[2], 40, mins_ago=12)
 
-    vault = _pool(p[1], "Evil Eye #88", "👁", "evileye-88", "a2", "vault", 10, vault_max=125, secret=77)
+    vault = _pool(p[1], "Evil Eye #88", "👁", "evileye-88", "a2", "vault", 10, minutes=360, vault_max=125, secret=77)
     for user, number in ((p[0], 7), (p[2], 13), (p[3], 100), (p[4], 42)):
         _entry(vault, user, 10, number=number)
 
-    cigar = _pool(p[2], "Vintage Cigar #7", "🚬", "vintagecigar-7", "a3", "wheel", 25, minutes=22 * 60)
+    cigar = _pool(p[2], "Vintage Cigar #7", "🚬", "vintagecigar-7", "a3", "wheel", 25, minutes=5 * 60)
     _entry(cigar, p[3], 75)
 
     auction = _pool(p[3], "Jelly Bunny #42", "🎭", "jellybunny-42", "a4", "auction", 20, minutes=190)

@@ -12,9 +12,10 @@ from werkzeug.serving import make_server                      # noqa: E402
 from app import app                                            # noqa: E402
 from models import db, User, GiftItem, Pool, PoolEntry, LedgerTx  # noqa: E402
 from bot.relay import Relay                                    # noqa: E402
+from bot.vloody import pool_ref                                # noqa: E402
 
 logging.basicConfig(level=logging.CRITICAL)
-OWNER, ALICE, BOB = 990000200, 990000201, 990000202
+OWNER, ALICE, BOB, CAROL = 990000200, 990000201, 990000202, 990000203
 ok = True
 
 
@@ -102,7 +103,7 @@ def hdr(tid, name):
 
 
 c = app.test_client()
-A, B = hdr(ALICE, "alice"), hdr(BOB, "bob")
+A, B, C = hdr(ALICE, "alice"), hdr(BOB, "bob"), hdr(CAROL, "carol")
 inv = lambda h: c.get("/api/inventory/gifts", headers=h).get_json()["gifts"]
 bal = lambda h: c.get("/api/profile", headers=h).get_json()["balance"]
 
@@ -123,7 +124,7 @@ fake.gifts = {
               "sender_user": {"id": ALICE}, "gift": {"id": "x"}},         # обычный, не NFT
     "g-pepe": unique("g-pepe", ALICE, "Plush Pepe", 1337, fee=25),
 }
-c.get("/api/profile", headers=A); c.get("/api/profile", headers=B)
+c.get("/api/profile", headers=A); c.get("/api/profile", headers=B); c.get("/api/profile", headers=C)
 res = relay.sync()
 a_inv = inv(A)
 check("NFT-подарок зачислен отправителю", res[0] == 1 and len(a_inv) == 1 and a_inv[0]["name"] == "Plush Pepe #1337", a_inv)
@@ -157,16 +158,24 @@ with app.app_context():
 
 # ---------- 3. розыгрыш и выдача победителю
 with app.app_context():
-    for tid in (ALICE, BOB):
+    for tid in (ALICE, BOB, CAROL):
         User.query.filter_by(telegram_id=tid).first().stars_balance = 1000
+    User.query.filter_by(telegram_id=ALICE).first().vdt_balance = 100     # сбор 0.1 VDT за запуск раунда
     db.session.commit()
 gift_id = a_inv[0]["id"]
 pool = c.post("/api/pools", headers=A, json={"mode": "wheel", "gift_id": gift_id, "min_stake": 5, "duration_min": 15}).get_json()
 check("раунд отдаёт image/anim подарка", pool.get("image") == "/gift-art/plushpepe-1337.jpg"
       and pool.get("anim") == "/gift-art/plushpepe-1337.json", (pool.get("image"), pool.get("anim")))
 c.post(f"/api/pools/{pool['id']}/stake", headers=B, json={"amount": 100})
+c.post(f"/api/pools/{pool['id']}/stake", headers=C, json={"amount": 5})   # с одним игроком раунд отменяется
 with app.app_context():
-    db.session.get(Pool, pool["id"]).ends_at = datetime.utcnow() - timedelta(seconds=1)
+    p = db.session.get(Pool, pool["id"])
+    while True:   # подбираем seed, при котором выигрывает bob (билеты 0..99 из 105) — тест детерминирован
+        seed = os.urandom(32)
+        if int(hmac.new(seed, f"{p.id}:105:2".encode(), hashlib.sha256).hexdigest(), 16) % 105 < 100:
+            break
+    p.seed, p.seed_hash = seed.hex(), hashlib.sha256(seed).hexdigest()
+    p.ends_at = datetime.utcnow() - timedelta(seconds=1)
     db.session.commit()
 done = c.get(f"/api/pools/{pool['id']}", headers=B).get_json()
 check("раунд разыгран, подарок у победителя", done["winner"]["is_me"] and inv(B)[0]["id"] == gift_id)
@@ -235,14 +244,17 @@ check("служебный API без секрета -> 403", r.status_code == 40
 
 # ---------- уборка
 with app.app_context():
-    users = User.query.filter(User.telegram_id.in_([ALICE, BOB])).all()
+    users = User.query.filter(User.telegram_id.in_([ALICE, BOB, CAROL])).all()
     uids = [u.id for u in users]
-    pids = [p.id for p in Pool.query.filter(Pool.organizer_id.in_(uids)).all()]
+    pools = Pool.query.filter(Pool.organizer_id.in_(uids)).all()
+    pids = [p.id for p in pools]
+    for p in pools:
+        LedgerTx.query.filter(LedgerTx.user_id == None,                   # noqa: E711
+                              LedgerTx.ref.like(pool_ref(p, "") + "%")).delete(synchronize_session=False)
     PoolEntry.query.filter(PoolEntry.pool_id.in_(pids)).delete(synchronize_session=False)
     Pool.query.filter(Pool.id.in_(pids)).delete(synchronize_session=False)
     GiftItem.query.filter(GiftItem.owner_id.in_(uids)).delete(synchronize_session=False)
     LedgerTx.query.filter(LedgerTx.user_id.in_(uids)).delete(synchronize_session=False)
-    LedgerTx.query.filter(LedgerTx.user_id == None, LedgerTx.title.like(f"%#{pool['id']}")).delete(synchronize_session=False)  # noqa: E711
     LedgerTx.query.filter(LedgerTx.user_id == None, LedgerTx.kind == "gift_fee").delete(synchronize_session=False)  # noqa: E711
     User.query.filter(User.id.in_(uids)).delete(synchronize_session=False)
     db.session.commit()

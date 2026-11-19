@@ -78,7 +78,7 @@ def create_app():
     def inject_globals():
         return {"DEMO_TELEGRAM_ID": DEMO_TELEGRAM_ID, "DEMO_MODE": DEMO_MODE,
                 "BOT_USERNAME": BOT_USERNAME, "RELAY_USERNAME": RELAY_USERNAME,
-                "COMMISSION_PCT": int(COMMISSION_RATE * 100)}
+                "COMMISSION_PCT": round(COMMISSION_RATE * 100, 1)}     # 4.5, а не 4
 
     # ----------------------------- СТРАНИЦЫ -----------------------------
     @app.route("/")

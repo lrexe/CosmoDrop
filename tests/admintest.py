@@ -39,6 +39,7 @@ for h in (O, A, B):
 with app.app_context():
     for tid in (P1, P2):
         User.query.filter_by(telegram_id=tid).first().stars_balance = 1000
+    User.query.filter_by(telegram_id=ORG).first().vdt_balance = 1000      # сбор 0.1 VDT за запуск раунда
     db.session.commit()
     rev0 = V._sum(LedgerTx.amount, LedgerTx.user_id == None, LedgerTx.kind == "commission")  # noqa: E711
 
