@@ -209,10 +209,17 @@ def _finish(pool, winner_id, result):
 
     title = f"{gift.emoji} {gift.name}"
     pay = mover(pool.currency)                 # всё — в валюте раунда, никаких пересчётов
-    organizer = lock(pool.organizer)
-    pay(organizer, payout, "organizer_payout", f"Ставки раунда #{pool.id} · {title}")
-    if pool.currency == "VLD":                 # статистика заработка ведётся в VLD
-        organizer.total_earned = (organizer.total_earned or 0) + payout
+    organizer = db.session.get(User, pool.organizer_id)
+    if organizer is None:
+        # строки организатора нет (ручная чистка БД): его доля не пропадает — копится у платформы
+        log.error("pool %s: organizer %s missing, payout %s kept by platform", pool.id, pool.organizer_id, payout)
+        pay(None, payout, "orphan_payout", f"Доля организатора раунда #{pool.id} (нет игрока)",
+            ref=pool_ref(pool, "orphan"))
+    else:
+        lock(organizer)
+        pay(organizer, payout, "organizer_payout", f"Ставки раунда #{pool.id} · {title}")
+        if pool.currency == "VLD":             # статистика заработка ведётся в VLD
+            organizer.total_earned = (organizer.total_earned or 0) + payout
 
     # реферальные — из комиссии платформы, не из кармана
     per_user = {}
@@ -253,7 +260,12 @@ def _refund_all(pool, reason):
     refund = mover(pool.currency)
     refunded = 0
     for e in PoolEntry.query.filter_by(pool_id=pool.id).order_by(PoolEntry.id).all():
-        staker = lock(db.session.get(User, e.user_id))
+        staker = db.session.get(User, e.user_id)
+        if staker is None:
+            # строки игрока нет: вернуть некому. Не блокируем отмену (и все запросы, где она идёт)
+            log.error("pool %s: staker %s missing, refund %s skipped", pool.id, e.user_id, e.amount)
+            continue
+        lock(staker)
         refund(staker, e.amount, "refund", f"Возврат ставки · раунд #{pool.id} отменён")
         if pool.currency == "VLD":
             staker.total_spent = max(0, (staker.total_spent or 0) - e.amount)
@@ -263,11 +275,16 @@ def _refund_all(pool, reason):
     return refunded
 
 
+def deadline(pool):
+    """Когда раунд кончается. У старых строк ends_at может быть пустым — тогда правило 6 часов."""
+    return pool.ends_at or ((pool.created_at or now()) + ROUND_LIFE)
+
+
 def settle(pool):
     """Подводит итог раунда, у которого вышло время. Повторный вызов ничего не делает."""
     db.session.flush()
     db.session.refresh(pool, with_for_update=True)     # статус — под блокировкой строки
-    if pool.status != "live" or not pool.ends_at or pool.ends_at > now():
+    if pool.status != "live" or deadline(pool) > now():
         return
     entries = PoolEntry.query.filter_by(pool_id=pool.id).order_by(PoolEntry.id).all()
     if pool.mode == "vault":
@@ -299,12 +316,19 @@ def settle(pool):
 
 
 def settle_due():
-    due = Pool.query.filter(Pool.status == "live", Pool.ends_at != None,  # noqa: E711
-                            Pool.ends_at <= now()).all()
+    """Закрывает просроченные раунды. Сбой одного раунда не должен ломать запрос игрока."""
+    t = now()
+    due = Pool.query.filter(Pool.status == "live", db.or_(
+        Pool.ends_at <= t,
+        db.and_(Pool.ends_at == None, Pool.created_at <= t - ROUND_LIFE))).all()  # noqa: E711
     for p in due:
-        settle(p)
-    if due:
-        db.session.commit()
+        pid = p.id
+        try:
+            settle(p)
+            db.session.commit()            # по одному: ошибка в одном раунде не откатывает другие
+        except Exception:
+            db.session.rollback()
+            log.exception("settle failed for pool %s", pid)
 
 
 @vloody_bp.before_request
@@ -444,6 +468,14 @@ def _channel_member_update(upd):
 
 
 # ------------------------------------------------------------------ сериализация
+def _av(u):
+    return u.avatar if u else "👤"
+
+
+def _photo(u):
+    return u.photo if u else None
+
+
 def pool_dict(pool, user, detail=False):
     cfg = json.loads(pool.cfg or "{}")
     entries = PoolEntry.query.filter_by(pool_id=pool.id).order_by(PoolEntry.id).all()
@@ -468,7 +500,7 @@ def pool_dict(pool, user, detail=False):
         "participants": None if blind else participants,
         "my_total": mine,
         "my_chance": round(mine / bank * 100, 1) if (pool.mode == "wheel" and bank) else None,
-        "winner": ({"name": display_name(pool.winner), "avatar": pool.winner.avatar, "photo": pool.winner.photo,
+        "winner": ({"name": display_name(pool.winner), "avatar": _av(pool.winner), "photo": _photo(pool.winner),
                     "is_me": pool.winner_id == uid} if pool.winner_id else None),
         "commission_rate": COMMISSION_RATE,
         "currency": pool.currency or "VLD", "create_fee": CREATE_FEE_VDT,
@@ -478,6 +510,9 @@ def pool_dict(pool, user, detail=False):
         res = json.loads(pool.result or "{}")
         # у старых отменённых раундов причины нет: админ помечал by=admin, остальные были пустыми
         d["cancel_reason"] = res.get("cancel_reason") or ("admin" if res.get("by") == "admin" else "no_players")
+        # ставки возвращены: в банке ничего нет. Сколько вернули — отдельным полем, ставки ниже видны как были
+        d["refunded"] = res.get("refunded", bank)
+        d["bank"] = 0
     if pool.mode == "vault":
         d["vault_max"] = cfg.get("max")
         d["taken"] = len(entries)
@@ -494,7 +529,7 @@ def pool_dict(pool, user, detail=False):
             if e.user_id not in agg:
                 order.append(e.user_id)
                 agg[e.user_id] = {"key": e.user_id, "name": display_name(e.user),
-                                  "avatar": e.user.avatar, "photo": e.user.photo, "amount": 0, "is_me": e.user_id == uid}
+                                  "avatar": _av(e.user), "photo": _photo(e.user), "amount": 0, "is_me": e.user_id == uid}
             agg[e.user_id]["amount"] += e.amount
         d["stakes"] = [agg[k] for k in order]
         d["winner_key"] = pool.winner_id
@@ -674,7 +709,7 @@ def _stake_guard(pool_id, mode):
     pool = Pool.query.filter_by(id=pool_id).with_for_update().first()
     if not pool or pool.mode != mode:
         return None, None, err("Раунд не найден", 404)
-    if pool.status != "live" or (pool.ends_at and pool.ends_at <= now()):
+    if pool.status != "live" or deadline(pool) <= now():
         return None, None, err("Раунд уже завершён", 400)
     if user.is_banned:
         return None, None, err("Доступ заблокирован", 403)
@@ -1636,7 +1671,7 @@ def admin_pools():
         out.append({
             "id": p.id, "mode": p.mode, "status": p.status, "title": p.gift.name, "emoji": p.gift.emoji,
             "currency": p.currency or "VLD",
-            "organizer": display_name(p.organizer), "organizer_tid": p.organizer.telegram_id,
+            "organizer": display_name(p.organizer), "organizer_tid": p.organizer.telegram_id if p.organizer else None,
             "min_stake": p.min_stake, "bank": sum(e.amount for e in entries), "entries": len(entries),
             "participants": len({e.user_id for e in entries}),
             "created_ts": ts(p.created_at), "ends_ts": ts(p.ends_at),

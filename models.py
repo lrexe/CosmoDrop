@@ -1,5 +1,5 @@
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 db = SQLAlchemy()
 
@@ -454,3 +454,8 @@ def ensure_columns():
     if inspector.has_table("gift_items"):
         db.session.execute(db.text("CREATE INDEX IF NOT EXISTS ix_gift_items_slug ON gift_items (slug)"))
     db.session.commit()
+    # правило 6 часов: у старых живых раундов (бессрочный сейф) срока не было — иначе они не закроются никогда
+    if inspector.has_table("pools"):
+        for pool in Pool.query.filter(Pool.status == "live", Pool.ends_at == None).all():  # noqa: E711
+            pool.ends_at = (pool.created_at or datetime.utcnow()) + timedelta(hours=6)
+        db.session.commit()

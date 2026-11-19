@@ -584,5 +584,156 @@ with app.app_context():
     User.query.filter(User.id.in_(uids)).delete(synchronize_session=False)
     db.session.commit()
 
+# ================================================================== задача 6: аудит денежных путей
+IDS.update({"a6_org": 990000970, "a6_p1": 990000971, "a6_p2": 990000972, "a6_ghost": 990000973,
+            "a6_pay": 990000974})
+T6 = ("a6_org", "a6_p1", "a6_p2", "a6_ghost", "a6_pay")
+plat6 = []                           # ключи проводок платформы, созданных этим блоком
+
+
+def clean6(extra_uids=()):
+    """Убирает всё, что оставил блок 6 (в том числе после упавшего прогона): платформа — по точным ключам раундов."""
+    with app.app_context():
+        users = User.query.filter(User.telegram_id.in_([IDS[k] for k in T6])).all()
+        uids = [x.id for x in users] + [u for u in extra_uids if u]
+        pools = Pool.query.filter(Pool.organizer_id.in_(uids)).all()
+        pids = [p.id for p in pools]
+        refs = [vloody.pool_ref(p, w) for p in pools for w in ("fee", "commission", "orphan")] + plat6
+        LedgerTx.query.filter(LedgerTx.user_id == None, LedgerTx.ref.in_([x for x in refs if x])).delete(  # noqa: E711
+            synchronize_session=False)
+        ghosts = [e.user_id for e in PoolEntry.query.filter(PoolEntry.pool_id.in_(pids)).all()]
+        PoolEntry.query.filter(PoolEntry.pool_id.in_(pids)).delete(synchronize_session=False)
+        Pool.query.filter(Pool.id.in_(pids)).delete(synchronize_session=False)
+        GiftItem.query.filter(db.or_(GiftItem.owner_id.in_(uids), GiftItem.tg_gift_id.like("a6-%"))).delete(
+            synchronize_session=False)
+        for model in (TonDeposit, PayoutRequest):
+            model.query.filter(model.user_id.in_(uids)).delete(synchronize_session=False)
+        gone = [g for g in ghosts if not db.session.get(User, g)]       # удалённые тестом игроки
+        LedgerTx.query.filter(LedgerTx.user_id.in_(uids + gone)).delete(synchronize_session=False)
+        User.query.filter(User.id.in_(uids)).delete(synchronize_session=False)
+        db.session.commit()
+
+
+clean6()
+ghost_id = None
+
+
+def gift6(who="a6_org"):
+    _gift_n[0] += 1
+    r = c.post("/api/relay/gift-deposit", headers=RELAY,
+               json={"telegram_id": IDS[who], "name": f"A6 Gift #{_gift_n[0]}", "tg_gift_id": f"a6-{_gift_n[0]}-{secrets.token_hex(3)}"})
+    return r.get_json()["gift"]["id"]
+
+
+def pool6(body):
+    r = post("a6_org", "/api/pools", body)
+    p = r.get_json()
+    with app.app_context():
+        plat6.append(vloody.pool_ref(db.session.get(Pool, p["id"]), "fee"))
+        plat6.append(vloody.pool_ref(db.session.get(Pool, p["id"]), "commission"))
+    return p
+
+
+for who in T6:
+    get(who, "/api/profile")
+setbal("a6_org", vld=0, vdt=100000)
+for who in ("a6_p1", "a6_p2", "a6_ghost"):
+    setbal(who, vld=1000, vdt=10000)
+
+# ---------- 1. ставивший игрок удалён: отмена раунда не роняет каждый запрос
+w6 = pool6({"mode": "wheel", "gift_id": gift6(), "min_stake": 5, "duration_min": 15})
+post("a6_p1", f"/api/pools/{w6['id']}/stake", {"amount": 40})
+post("a6_ghost", f"/api/pools/{w6['id']}/stake", {"amount": 60})
+with app.app_context():                 # строка игрока пропала (ручная чистка БД), ставка осталась
+    ghost_id = uid_of("a6_ghost")
+    LedgerTx.query.filter_by(user_id=ghost_id).delete(synchronize_session=False)
+    User.query.filter_by(id=ghost_id).delete(synchronize_session=False)
+    p6 = db.session.get(Pool, w6["id"])
+    p6.ends_at = datetime.utcnow() - timedelta(seconds=1)
+    # оставляем одного «живого» участника: раунд уйдёт в отмену с возвратом
+    db.session.commit()
+r = get("a6_p1", "/api/profile")
+check("A6: удалённый игрок в отменяемом раунде не роняет запросы", r.status_code == 200, r.status_code)
+d = get("a6_p1", f"/api/pools/{w6['id']}").get_json() or {}
+# ghost и p1 — двое разных: раунд разыгрывается; победителем может оказаться удалённый игрок
+check("A6: раунд с удалённым игроком всё равно завершён", d.get("status") in ("finished", "cancelled"), d.get("status"))
+r = get("a6_p1", "/api/pools")
+check("A6: список раундов с удалённым игроком отвечает 200", r.status_code == 200, r.status_code)
+r = get("a6_p1", "/api/winners")
+check("A6: лента победителей с удалённым игроком отвечает 200", r.status_code == 200, r.status_code)
+
+w7 = pool6({"mode": "wheel", "gift_id": gift6(), "min_stake": 5, "duration_min": 15})
+post("a6_p1", f"/api/pools/{w7['id']}/stake", {"amount": 25})
+with app.app_context():
+    db.session.add(PoolEntry(pool_id=w7["id"], user_id=ghost_id, amount=30, created_at=datetime.utcnow()))
+    db.session.get(Pool, w7["id"]).ends_at = datetime.utcnow() - timedelta(seconds=1)
+    # p1 — единственный настоящий участник, но записей двое: даже если розыгрыш — проверяем обе ветки ниже
+    db.session.commit()
+p1_before = bals("a6_p1")[0]
+with app.app_context():
+    try:
+        vloody._refund_all(db.session.get(Pool, w7["id"]), "admin"); db.session.commit(); ref_err = None
+    except Exception as e:                                       # noqa: BLE001
+        db.session.rollback(); ref_err = repr(e)
+check("A6: _refund_all пропускает отсутствующего игрока", ref_err is None, ref_err)
+check("A6: остальным ставки вернулись", bals("a6_p1")[0] == p1_before + 25, (p1_before, bals("a6_p1")))
+
+# ---------- 1b. организатор удалён: _finish не падает, деньги не исчезают
+w8 = pool6({"mode": "wheel", "gift_id": gift6(), "min_stake": 5, "duration_min": 15})
+post("a6_p1", f"/api/pools/{w8['id']}/stake", {"amount": 100})
+post("a6_p2", f"/api/pools/{w8['id']}/stake", {"amount": 100})
+with app.app_context():
+    pl = db.session.get(Pool, w8["id"])
+    real_org = pl.organizer_id
+    pl.organizer_id = 10 ** 9                                   # организатора нет
+    db.session.commit()
+    try:
+        vloody._finish(db.session.get(Pool, w8["id"]), uid_of("a6_p1"), {}); db.session.commit(); fin_err = None
+    except Exception as e:                                       # noqa: BLE001
+        db.session.rollback(); fin_err = repr(e)
+    orphan = LedgerTx.query.filter(LedgerTx.user_id == None,                       # noqa: E711
+                                   LedgerTx.ref == vloody.pool_ref(db.session.get(Pool, w8["id"]), "orphan")).first()
+    orphan = orphan.amount if orphan else None
+    plat6.append(vloody.pool_ref(db.session.get(Pool, w8["id"]), "orphan"))
+    db.session.get(Pool, w8["id"]).organizer_id = real_org
+    db.session.commit()
+check("A6: _finish без организатора не падает", fin_err is None, fin_err)
+check("A6: доля пропавшего организатора — на счёт платформы (orphan)", orphan == 191, orphan)
+
+# ---------- 2. живой сейф без ends_at (старые данные) всё равно закрывается через 6 часов
+v6 = pool6({"mode": "vault", "gift_id": gift6(), "min_stake": 10, "vault_max": 25})
+with app.app_context():
+    sec6 = json.loads(db.session.get(Pool, v6["id"]).cfg)["secret"]
+post("a6_p2", f"/api/pools/{v6['id']}/vault", {"number": 1 if sec6 != 1 else 2})
+with app.app_context():
+    pv = db.session.get(Pool, v6["id"])
+    pv.ends_at, pv.created_at = None, datetime.utcnow() - timedelta(hours=7)
+    db.session.commit()
+r = post("a6_p1", f"/api/pools/{v6['id']}/vault", {"number": 3 if sec6 != 3 else 4})
+check("A6: в просроченный сейф без ends_at ставить нельзя", r.status_code == 400, r.status_code)
+d = get("a6_p2", f"/api/pools/{v6['id']}").get_json()
+check("A6: сейф без ends_at старше 6 часов отменён (not_cracked)", d["status"] == "cancelled"
+      and d.get("cancel_reason") == "not_cracked", (d["status"], d.get("cancel_reason")))
+with app.app_context():
+    pv = db.session.get(Pool, v6["id"])
+    pv.status, pv.ends_at = "live", None                      # имитация старой строки для мини-миграции
+    db.session.commit()
+    from models import ensure_columns
+    ensure_columns()
+    fixed = db.session.get(Pool, v6["id"])
+    mig_ok = fixed.ends_at is not None and abs((fixed.ends_at - fixed.created_at) - timedelta(hours=6)) < timedelta(seconds=1)
+    fixed.status = "cancelled"
+    db.session.commit()
+check("A6: мини-миграция ставит ends_at = created_at + 6ч живым раундам без срока", mig_ok)
+
+# ---------- 3. отменённый раунд: банк показан возвращённым
+d = get("a6_p2", f"/api/pools/{v6['id']}").get_json()
+check("A6: у отменённого раунда bank = 0 и refunded = сумма возврата", d.get("bank") == 0 and d.get("refunded") == 10,
+      (d.get("bank"), d.get("refunded")))
+check("A6: ставки отменённого раунда видны для прозрачности", d.get("numbers") and len(d["numbers"]) == 1, d.get("numbers"))
+
+# ---------- уборка блока 6
+clean6()
+
 print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)
