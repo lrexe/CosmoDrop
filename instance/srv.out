@@ -1,3 +1,0 @@
-⚠️  ДЕМО-РЕЖИМ: BOT_TOKEN не задан (или DEMO_MODE=1) — все запросы без Telegram initData идут от демо-пользователя, пополнение открыто.
- * Serving Flask app 'app'
- * Debug mode: off
