@@ -56,7 +56,8 @@
     <div class="vl-side-foot">
       <div class="card vl-side-bal">
         <div class="vl-side-bal-lbl">Баланс</div>
-        <div class="vl-side-bal-row"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg><span class="num vl-side-bal-val" id="sb-stars-val">0</span><span class="vl-side-bal-unit">VLD</span></div>
+        <div class="vl-side-bal-row vl-cur-vld"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg><span class="num vl-side-bal-val" id="sb-vld-val">0</span><span class="vl-side-bal-unit">VLD</span></div>
+        <div class="vl-side-bal-row vl-cur-vdt"><svg class="ic" aria-hidden="true"><use href="#i-ton"/></svg><span class="num vl-side-bal-val" id="sb-vdt-val">0</span><span class="vl-side-bal-unit">VDT</span></div>
         <button type="button" class="vl-btn vl-btn-primary vl-btn-sm vl-btn-block" data-act="topup"><svg class="ic" aria-hidden="true"><use href="#i-create"/></svg>Пополнить</button>
       </div>
       <button type="button" class="vl-btn vl-btn-ghost vl-btn-sm vl-btn-block vl-side-theme" data-act="theme">
@@ -79,10 +80,14 @@
       <button type="button" class="vl-btn vl-btn-ghost vl-btn-sm vl-btn-icon vl-top-btn" data-act="theme" aria-label="Сменить тему" title="Сменить тему">
         <svg class="ic vl-when-dark" aria-hidden="true"><use href="#i-sun"/></svg><svg class="ic vl-when-light" aria-hidden="true"><use href="#i-moon"/></svg>
       </button>
-      <div class="vl-bal">
-        <svg class="ic" aria-hidden="true"><use href="#i-star"/></svg>
-        <span class="num vl-bal-val" id="tb-stars-val">0</span><span class="vl-bal-unit">VLD</span>
-        <button type="button" class="vl-btn vl-btn-primary vl-btn-icon vl-bal-plus" data-act="topup" aria-label="Пополнить баланс" title="Пополнить"><svg class="ic" aria-hidden="true"><use href="#i-create"/></svg></button>
+      <!-- две независимые валюты: нажатие на чип открывает пополнение именно этой валюты -->
+      <div class="vl-bals" role="group" aria-label="Баланс">
+        <button type="button" class="vl-bal vl-cur-vld" data-act="topup" title="Пополнить VLD звёздами">
+          <svg class="ic" aria-hidden="true"><use href="#i-star"/></svg><span class="num vl-bal-val" id="tb-vld-val">0</span><span class="vl-bal-unit">VLD</span><span class="sr-only">— пополнить</span>
+        </button>
+        <button type="button" class="vl-bal vl-cur-vdt" data-act="topup-ton" title="Пополнить VDT через TON">
+          <svg class="ic" aria-hidden="true"><use href="#i-ton"/></svg><span class="num vl-bal-val" id="tb-vdt-val">0</span><span class="vl-bal-unit">VDT</span><span class="sr-only">— пополнить</span>
+        </button>
       </div>
     </header>
 
@@ -97,6 +102,8 @@
         <button type="button" class="vl-chip" data-flt="wheel" aria-pressed="false">Колесо</button>
         <button type="button" class="vl-chip" data-flt="vault" aria-pressed="false">Сейф</button>
         <button type="button" class="vl-chip" data-flt="auction" aria-pressed="false">Аукцион</button>
+        <button type="button" class="vl-chip vl-cur-vld" data-flt="VLD" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg>VLD • Stars</button>
+        <button type="button" class="vl-chip vl-cur-vdt" data-flt="VDT" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-ton"/></svg>VDT • TON</button>
       </div>
       <div class="vl-pools" id="pools-list" aria-busy="true">
         {% for i in range(3) %}
@@ -134,17 +141,17 @@
 
         <section class="vl-rd-cond" aria-label="Условия раунда">
           <dl class="vl-rd-stats">
-            <div class="vl-rd-stat"><dt>Мин. ставка</dt><dd><span class="num" id="det-min">0</span><small>VLD</small></dd></div>
-            <div class="vl-rd-stat"><dt>Банк</dt><dd><span class="num" id="det-bank">0</span><small>VLD</small></dd></div>
+            <div class="vl-rd-stat"><dt>Мин. ставка</dt><dd><span class="num" id="det-min">0</span><small data-cur-u>VLD</small></dd></div>
+            <div class="vl-rd-stat"><dt>Банк</dt><dd><span class="num" id="det-bank">0</span><small data-cur-u>VLD</small></dd></div>
             <div class="vl-rd-stat"><dt>Участники</dt><dd><span class="num" id="det-part">0</span></dd></div>
-            <div class="vl-rd-stat"><dt>Моя доля · шанс</dt><dd><span class="num" id="det-mine">0</span><small>·</small><span class="num" id="det-chance">0%</span></dd></div>
+            <div class="vl-rd-stat"><dt>Моя доля · шанс</dt><dd><span class="num" id="det-mine">0</span><small data-cur-u>VLD</small><small>·</small><span class="num" id="det-chance">0%</span></dd></div>
           </dl>
           <div class="vl-rd-time">
             <svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg><span id="det-time-lbl">До розыгрыша</span><b class="num" id="det-timer">—</b>
           </div>
           <div class="vl-rd-prog" aria-hidden="true"><i id="det-pf"></i></div>
           <div class="vl-rd-act">
-            <button type="button" class="vl-btn vl-btn-primary vl-btn-block" id="det-buy" data-act="stake-open"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg>Сделать ставку</button>
+            <button type="button" class="vl-btn vl-btn-primary vl-btn-block" id="det-buy" data-act="stake-open"><svg class="ic" aria-hidden="true"><use id="det-buy-ic" href="#i-star"/></svg>Сделать ставку</button>
             <button type="button" class="vl-btn vl-btn-ghost vl-btn-block hid" id="det-cancel" data-act="pool-cancel">Отменить раунд — ставок нет</button>
           </div>
         </section>
@@ -206,8 +213,8 @@
 
         <section class="vl-rd-cond" aria-label="Условия раунда">
           <dl class="vl-rd-stats">
-            <div class="vl-rd-stat"><dt>Попытка</dt><dd><span class="num" id="vt-min">0</span><small>VLD</small></dd></div>
-            <div class="vl-rd-stat"><dt>Банк</dt><dd><span class="num" id="vt-bank">0</span><small>VLD</small></dd></div>
+            <div class="vl-rd-stat"><dt>Попытка</dt><dd><span class="num" id="vt-min">0</span><small data-cur-u>VLD</small></dd></div>
+            <div class="vl-rd-stat"><dt>Банк</dt><dd><span class="num" id="vt-bank">0</span><small data-cur-u>VLD</small></dd></div>
             <div class="vl-rd-stat"><dt>Участники</dt><dd><span class="num" id="vt-part">0</span></dd></div>
             <div class="vl-rd-stat"><dt>Занято чисел</dt><dd><span class="num" id="vt-taken">0</span></dd></div>
           </dl>
@@ -288,7 +295,7 @@
 
         <section class="vl-rd-cond" aria-label="Условия раунда">
           <dl class="vl-rd-stats">
-            <div class="vl-rd-stat"><dt>Мин. ставка</dt><dd><span class="num" id="auc-min">0</span><small>VLD</small></dd></div>
+            <div class="vl-rd-stat"><dt>Мин. ставка</dt><dd><span class="num" id="auc-min">0</span><small data-cur-u>VLD</small></dd></div>
             <div class="vl-rd-stat"><dt>Банк</dt><dd id="auc-bank"></dd></div>
             <div class="vl-rd-stat"><dt>Участники</dt><dd id="auc-part"></dd></div>
             <div class="vl-rd-stat"><dt>Твоя накопленная ставка</dt><dd id="auc-mine-val">—</dd></div>
@@ -313,8 +320,8 @@
             </div>
           </div>
           <div class="vl-auc-form" id="auc-form">
-            <label class="sr-only" for="auc-amt">Сумма ставки, VLD</label>
-            <input class="input num" id="auc-amt" type="number" inputmode="numeric" placeholder="20+" autocomplete="off">
+            <label class="sr-only" for="auc-amt" id="auc-amt-lbl">Сумма ставки, VLD</label>
+            <input class="input num" id="auc-amt" type="text" inputmode="numeric" placeholder="20+" autocomplete="off">
             <button type="button" class="vl-btn vl-btn-primary" data-act="auction-bid"><svg class="ic" aria-hidden="true"><use href="#i-eye-off"/></svg>Поставить вслепую</button>
           </div>
         </section>
@@ -385,8 +392,21 @@
               <div class="vl-cr-sh-t"><h2 class="vl-cr-t" id="cr-h3">Настройки</h2></div>
             </header>
             <div class="vl-cr-field">
-              <div class="vl-cr-lbl" id="cr-stake-lbl">Мин. ставка</div>
-              <div class="vl-cr-chips" id="cr-stakes" role="group" aria-labelledby="cr-stake-lbl"></div>
+              <div class="vl-cr-lbl" id="cr-cur-lbl">Валюта раунда</div>
+              <div class="vl-seg vl-seg-wide vl-cr-cur" id="cr-cur" role="group" aria-labelledby="cr-cur-lbl">
+                <button type="button" class="vl-seg-btn on" data-ccur="VLD" aria-pressed="true"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg>VLD • Stars</button>
+                <button type="button" class="vl-seg-btn" data-ccur="VDT" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-ton"/></svg>VDT • TON</button>
+              </div>
+              <p class="vl-cr-hint">Все ставки, банк и выплата организатору — в выбранной валюте. VLD и VDT друг в друга не обмениваются.</p>
+            </div>
+            <div class="vl-cr-field">
+              <label class="vl-cr-lbl" id="cr-stake-lbl" for="cr-stake">Минимальная ставка</label>
+              <div class="vl-cr-amt">
+                <input class="input num" id="cr-stake" type="text" inputmode="numeric" autocomplete="off" aria-describedby="cr-stake-hint">
+                <span class="vl-cr-amt-u" id="cr-stake-u" aria-hidden="true">VLD</span>
+              </div>
+              <div class="vl-cr-chips" id="cr-stakes" role="group" aria-label="Быстрый выбор суммы"></div>
+              <p class="vl-cr-hint" id="cr-stake-hint" aria-live="polite"></p>
             </div>
             <div class="vl-cr-field hid" id="cr-vault-box">
               <div class="vl-cr-lbl" id="cr-vault-lbl">Размер сейфа · сколько чисел</div>
@@ -397,6 +417,7 @@
                 <button type="button" class="vl-chip num" data-v="125" aria-pressed="false">125</button>
               </div>
               <p class="vl-cr-hint">Секретное число выбирает сервер, его не знает никто, даже ты. Хеш публикуется сразу, само число — после вскрытия.</p>
+              <p class="vl-cr-hint vl-cr-hint-key"><svg class="ic" aria-hidden="true"><use href="#i-clock"/></svg><span>Сейф живёт 6 часов: не вскрыли — все ставки возвращаются</span></p>
             </div>
             <div class="vl-cr-field" id="cr-time-box">
               <div class="vl-cr-lbl" id="cr-time-lbl">Окончание</div>
@@ -404,10 +425,16 @@
                 <button type="button" class="vl-chip is-on" data-v="15" aria-pressed="true">15 мин</button>
                 <button type="button" class="vl-chip" data-v="30" aria-pressed="false">30 мин</button>
                 <button type="button" class="vl-chip" data-v="60" aria-pressed="false">1 ч</button>
+                <button type="button" class="vl-chip" data-v="180" aria-pressed="false">3 ч</button>
                 <button type="button" class="vl-chip" data-v="360" aria-pressed="false">6 ч</button>
-                <button type="button" class="vl-chip" data-v="720" aria-pressed="false">12 ч</button>
-                <button type="button" class="vl-chip" data-v="1440" aria-pressed="false">24 ч</button>
               </div>
+              <p class="vl-cr-hint">Если к концу меньше двух участников — раунд отменяется и все ставки возвращаются.</p>
+            </div>
+            <div class="vl-cr-field hid" id="cr-ch-box">
+              <label class="vl-cr-lbl" for="cr-channel">Опубликовать в канале</label>
+              <select class="input vl-select" id="cr-channel">
+                <option value="">Не публиковать</option>
+              </select>
             </div>
           </section>
         </div>
@@ -426,8 +453,11 @@
             </div>
           </div>
           <dl class="vl-cr-rows" id="cr-sum-rows"></dl>
+          <p class="vl-cr-line num" id="cr-sum-line"></p>
           <p class="vl-cr-example" id="cr-sum-ex"></p>
-          <p class="vl-cr-fair"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><span>Хеш результата публикуется при создании, проверить его может любой. Если ставок не будет — подарок вернётся в инвентарь.</span></p>
+          <p class="vl-cr-fair"><svg class="ic" aria-hidden="true"><use href="#i-shield"/></svg><span>Хеш результата публикуется при создании, проверить его может любой. Если раунд отменится — ставки вернутся игрокам, подарок — в твой инвентарь; сбор за запуск не возвращается.</span></p>
+          <p class="vl-cr-need hid" id="cr-need" role="status"><svg class="ic" aria-hidden="true"><use href="#i-ton"/></svg><span>Пополни TON — нужно 0.1 VDT на запуск</span>
+            <button type="button" class="vl-btn vl-btn-ghost vl-btn-sm" data-act="topup-ton">Пополнить</button></p>
           <button type="button" class="vl-btn vl-btn-primary vl-btn-block" id="cr-go" data-act="pool-create"><svg class="ic" aria-hidden="true"><use href="#i-create"/></svg>Создать раунд</button>
         </aside>
       </div>
@@ -451,7 +481,7 @@
         <dl class="vl-pf-stats">
           <div class="vl-pf-stat"><dt>Выиграно NFT</dt><dd class="num" id="pf-won">0</dd></div>
           <div class="vl-pf-stat"><dt>Участий</dt><dd class="num" id="pf-part">0</dd></div>
-          <div class="vl-pf-stat"><dt>Выведено, VLD</dt><dd class="num" id="pf-wd">0</dd></div>
+          <div class="vl-pf-stat"><dt>Создано раундов</dt><dd class="num" id="pf-org">0</dd></div>
           <div class="vl-pf-stat vl-pf-streak">
             <dt>Серия дней</dt>
             <dd><svg class="ic" aria-hidden="true"><use href="#i-flame"/></svg><span class="num" id="streak-count">0</span></dd>
@@ -463,7 +493,10 @@
           <div class="vl-pf-col">
             <section class="card vl-pf-wallet" aria-labelledby="pf-wal-h">
               <h2 class="vl-pf-kick" id="pf-wal-h"><svg class="ic" aria-hidden="true"><use href="#i-wallet"/></svg>Баланс</h2>
-              <div class="vl-pf-bal"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg><span class="num" id="pf-bal">0</span><span class="vl-pf-bal-u">VLD</span></div>
+              <div class="vl-pf-bals">
+                <div class="vl-pf-bal vl-cur-vld"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg><span class="num" id="pf-vld">0</span><span class="vl-pf-bal-u">VLD</span><span class="vl-pf-bal-s">Stars · 1 ⭐ = 1 VLD</span></div>
+                <div class="vl-pf-bal vl-cur-vdt"><svg class="ic" aria-hidden="true"><use href="#i-ton"/></svg><span class="num" id="pf-vdt">0</span><span class="vl-pf-bal-u">VDT</span><span class="vl-pf-bal-s">TON · 1 TON = 1 VDT</span></div>
+              </div>
               <div class="vl-pf-ton"><svg class="ic" aria-hidden="true"><use href="#i-ton"/></svg><span id="pf-ton">TON-кошелёк не подключён</span></div>
               <div class="vl-pf-acts">
                 <button type="button" class="vl-pf-act is-main" data-act="topup"><span class="vl-pf-act-ic"><svg class="ic" aria-hidden="true"><use href="#i-create"/></svg></span>Пополнить</button>
@@ -488,8 +521,20 @@
             <section class="vl-pf-panel" id="ptc-wd" role="tabpanel" aria-labelledby="pt-wd"></section>
             <section class="vl-pf-panel" id="ptc-ch" role="tabpanel" aria-labelledby="pt-ch">
               <div class="card vl-pf-note">
-                <div class="vl-pf-note-t">Привязать канал</div>
-                <p class="vl-pf-note-s">Розыгрыши для подписчиков твоего канала — в разработке. Привязанных каналов пока нет.</p>
+                <div class="vl-pf-note-t">Публикуй раунды в своём канале</div>
+                <ol class="vl-pf-note-s vl-ch-steps">
+                  <li>Добавь <b>@{{ BOT_USERNAME }}</b> в администраторы канала с правом «Публикация сообщений».</li>
+                  <li>Канал появится ниже — нажми «Привязать». Или введи ID канала и нажми «Проверить».</li>
+                  <li>При создании раунда выбери канал — бот опубликует пост с кнопкой «Участвовать».</li>
+                </ol>
+              </div>
+              <div id="ch-list" aria-live="polite"></div>
+              <div class="card vl-ch-form">
+                <label class="vl-dlg-label" for="ch-chat-id">ID канала</label>
+                <div class="vl-ch-row">
+                  <input class="input num" id="ch-chat-id" type="text" inputmode="numeric" placeholder="-1001234567890" autocomplete="off" spellcheck="false">
+                  <button type="button" class="vl-btn vl-btn-ghost" data-act="channel-check">Проверить</button>
+                </div>
               </div>
             </section>
 
@@ -552,12 +597,12 @@
         <div><dt>Шанс после ставки</dt><dd class="num vl-dlg-accent" id="sm-chance">0%</dd></div>
       </dl>
       <div class="vl-dlg-amount" aria-live="polite">
-        <svg class="ic" aria-hidden="true"><use href="#i-star"/></svg><span class="num" id="m-sv-num">50</span><span class="vl-dlg-unit">VLD</span>
+        <svg class="ic" aria-hidden="true"><use id="sm-ic" href="#i-star"/></svg><span class="num" id="m-sv-num">50</span><span class="vl-dlg-unit" id="sm-unit">VLD</span>
       </div>
       <input class="vl-range" id="sm-slider" type="range" min="5" max="500" step="5" value="50" aria-label="Сумма ставки">
-      <div class="vl-dlg-hint"><span>Минимум <b class="num" id="sm-min">5</b> VLD</span><span>Баланс <b class="num" id="sm-bal">0</b></span></div>
+      <div class="vl-dlg-hint"><span>Минимум <b class="num" id="sm-min">5 VLD</b></span><span>Баланс <b class="num" id="sm-bal">0</b></span></div>
       <label class="sr-only" for="sm-input">Своя сумма</label>
-      <input class="input num vl-dlg-input" id="sm-input" type="number" inputmode="numeric" placeholder="Своя сумма" autocomplete="off">
+      <input class="input num vl-dlg-input" id="sm-input" type="text" inputmode="numeric" placeholder="Своя сумма" autocomplete="off">
       <p class="vl-dlg-alert" id="sm-warn" role="alert"></p>
       <button type="button" class="vl-btn vl-btn-primary vl-btn-block vl-dlg-cta" data-act="stake-confirm">Подтвердить ставку</button>
     </div>
@@ -574,8 +619,8 @@
     </header>
     <div class="vl-dlg-body">
       <div class="vl-seg vl-dlg-seg" id="tu-tabs" role="group" aria-label="Способ пополнения">
-        <button type="button" class="vl-seg-btn on" data-tum="stars" aria-pressed="true"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg>Stars</button>
-        <button type="button" class="vl-seg-btn" data-tum="ton" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-ton"/></svg>TON</button>
+        <button type="button" class="vl-seg-btn on" data-tum="stars" aria-pressed="true"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg>Stars → VLD</button>
+        <button type="button" class="vl-seg-btn" data-tum="ton" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-ton"/></svg>TON → VDT</button>
       </div>
 
       <div id="tu-stars">
@@ -611,7 +656,7 @@
           <div class="vl-dlg-equiv" aria-live="polite">
             <span class="vl-dlg-equiv-side"><svg class="ic" aria-hidden="true"><use href="#i-ton"/></svg><span class="num" id="tt-eq-ton">1</span><span class="vl-dlg-unit">TON</span></span>
             <span class="vl-dlg-equiv-eq" aria-hidden="true">=</span>
-            <span class="vl-dlg-equiv-side is-get"><span class="num" id="tt-eq-vld">0</span><span class="vl-dlg-unit">VLD</span></span>
+            <span class="vl-dlg-equiv-side is-get"><span class="num" id="tt-eq-vdt">0</span><span class="vl-dlg-unit">VDT</span></span>
           </div>
           <button type="button" class="vl-btn vl-btn-primary vl-btn-block vl-dlg-cta" data-act="ton-pay"><svg class="ic" aria-hidden="true"><use href="#i-wallet"/></svg>Оплатить в кошельке</button>
         </div>
@@ -647,21 +692,26 @@
       <button type="button" class="vl-btn vl-btn-ghost vl-btn-sm vl-btn-icon vl-dlg-close" data-ov-close aria-label="Закрыть"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button>
     </header>
     <div class="vl-dlg-body">
+      <div class="vl-seg vl-dlg-seg" id="tr-cur" role="group" aria-label="Валюта перевода">
+        <button type="button" class="vl-seg-btn on" data-trc="VLD" aria-pressed="true"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg>VLD</button>
+        <button type="button" class="vl-seg-btn" data-trc="VDT" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-ton"/></svg>VDT</button>
+      </div>
       <div class="vl-dlg-field">
-        <label class="vl-dlg-label" for="tr-recipient">Telegram ID получателя</label>
-        <input class="input num" id="tr-recipient" type="number" inputmode="numeric" placeholder="Например, 123456789" autocomplete="off">
+        <label class="vl-dlg-label" for="tr-recipient">Получатель</label>
+        <input class="input" id="tr-recipient" type="text" placeholder="@username" maxlength="33" autocomplete="off" autocapitalize="off" spellcheck="false">
         <div class="vl-dlg-recip" id="tr-recip-status" aria-live="polite">&nbsp;</div>
       </div>
       <div class="vl-dlg-field">
-        <label class="vl-dlg-label" for="tr-amount">Сумма (VLD)</label>
-        <input class="input num" id="tr-amount" type="number" inputmode="numeric" placeholder="150" autocomplete="off">
+        <label class="vl-dlg-label" for="tr-amount" id="tr-amt-lbl">Сумма, VLD</label>
+        <input class="input num" id="tr-amount" type="text" inputmode="numeric" placeholder="150" autocomplete="off">
       </div>
       <p class="vl-dlg-alert" id="tr-warn" role="alert"></p>
       <dl class="vl-dlg-sum">
-        <div class="vl-dlg-sum-row"><dt>Спишется с вас</dt><dd><span class="num" id="tr-calc-gross">0</span> VLD</dd></div>
-        <div class="vl-dlg-sum-row"><dt id="tr-fee-label">Комиссия перевода</dt><dd class="is-neg"><span class="num" id="tr-calc-fee">−0</span> VLD</dd></div>
-        <div class="vl-dlg-sum-row is-total"><dt>Получатель зачислит</dt><dd><span class="num" id="tr-calc-net">0</span> VLD</dd></div>
+        <div class="vl-dlg-sum-row"><dt>Спишется с вас</dt><dd class="num" id="tr-calc-gross">0</dd></div>
+        <div class="vl-dlg-sum-row"><dt id="tr-fee-label">Комиссия перевода</dt><dd class="num is-neg" id="tr-calc-fee">−0</dd></div>
+        <div class="vl-dlg-sum-row is-total"><dt>Получатель зачислит</dt><dd class="num" id="tr-calc-net">0</dd></div>
       </dl>
+      <p class="vl-dlg-note">Перевод идёт в той же валюте: VLD → VLD, VDT → VDT. Отменить перевод нельзя.</p>
       <button type="button" class="vl-btn vl-btn-primary vl-btn-block vl-dlg-cta" id="tr-submit-btn" data-act="transfer-confirm" disabled><svg class="ic" aria-hidden="true"><use href="#i-send"/></svg>Перевести</button>
     </div>
   </div>
@@ -677,23 +727,24 @@
     </header>
     <div class="vl-dlg-body">
       <div class="vl-seg vl-dlg-seg" id="po-tabs" role="group" aria-label="Способ вывода">
-        <button type="button" class="vl-seg-btn on" data-pom="TON" aria-pressed="true"><svg class="ic" aria-hidden="true"><use href="#i-ton"/></svg>TON-кошелёк</button>
-        <button type="button" class="vl-seg-btn" data-pom="STARS" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg>Telegram Stars</button>
+        <button type="button" class="vl-seg-btn on" data-pom="VLD" aria-pressed="true"><svg class="ic" aria-hidden="true"><use href="#i-star"/></svg>Stars · из VLD</button>
+        <button type="button" class="vl-seg-btn" data-pom="VDT" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-ton"/></svg>TON · из VDT</button>
       </div>
       <div class="vl-dlg-field">
         <label class="vl-dlg-label" id="po-dest-label" for="po-destination">Адрес TON-кошелька (EQ… / UQ…)</label>
         <input class="input num" id="po-destination" type="text" placeholder="UQAbc123…" maxlength="80" autocomplete="off" autocapitalize="off" spellcheck="false">
       </div>
       <div class="vl-dlg-field">
-        <label class="vl-dlg-label" for="po-amount">Сумма к списанию (VLD)</label>
-        <input class="input num" id="po-amount" type="number" inputmode="numeric" placeholder="100" autocomplete="off">
+        <label class="vl-dlg-label" for="po-amount" id="po-amt-lbl">Сумма к списанию, VLD</label>
+        <input class="input num" id="po-amount" type="text" inputmode="numeric" placeholder="275" autocomplete="off">
       </div>
       <p class="vl-dlg-alert" id="po-warn" role="alert"></p>
       <dl class="vl-dlg-sum">
+        <div class="vl-dlg-sum-row"><dt>Минимум</dt><dd class="num" id="po-calc-min">—</dd></div>
         <div class="vl-dlg-sum-row"><dt id="po-fee-label">Комиссия вывода</dt><dd class="num is-neg" id="po-calc-fee">−0</dd></div>
         <div class="vl-dlg-sum-row is-total"><dt>Придёт</dt><dd class="num" id="po-calc-net">0</dd></div>
       </dl>
-      <p class="vl-dlg-note">Автовыплаты отключены — заявку обрабатывает администратор. При отказе сумма возвращается полностью.</p>
+      <p class="vl-dlg-note" id="po-note">Автовыплаты отключены — заявку обрабатывает администратор. При отказе сумма возвращается полностью.</p>
       <button type="button" class="vl-btn vl-btn-primary vl-btn-block vl-dlg-cta" id="po-submit-btn" data-act="payout-confirm" disabled><svg class="ic" aria-hidden="true"><use href="#i-out"/></svg>Запросить вывод</button>
     </div>
   </div>

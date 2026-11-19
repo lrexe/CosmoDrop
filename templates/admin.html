@@ -152,6 +152,10 @@ td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const fmt = (n) => (Number(n) || 0).toLocaleString("ru-RU");
+  // VDT приходит в милли (1 VDT = 1000): показываем до 3 знаков, без хвостовых нулей
+  const fmtVdt = (m) => { const v = Math.abs(Number(m) || 0), w = Math.floor(v / 1000), f = String(v % 1000).padStart(3, "0").replace(/0+$/, "");
+    return ((Number(m) || 0) < 0 ? "−" : "") + fmt(w) + (f ? "." + f : ""); };
+  const fmtCur = (n, cur) => (cur === "VDT" ? fmtVdt(n) : fmt(n));
   const when = (ts) => ts ? new Date(ts * 1000).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—";
   const pill = (st, label) => `<span class="pill ${esc(st)}">${esc(label || st)}</span>`;
   const MODE = { wheel: "Колесо", vault: "Сейф", auction: "Аукцион" };
@@ -230,26 +234,33 @@ td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
   // ---------------------------------------------------------------- разделы
   const VIEWS = {
     async overview(v) {
-      const s = stats, r = s.revenue, l = s.liabilities, c = s.counts, d = s.deposits;
+      const s = stats, r = s.revenue, rv = s.revenue_vdt, l = s.liabilities, c = s.counts, d = s.deposits;
       v.innerHTML = `
         <h2>Обзор</h2>
-        ${s.config.demo ? `<div class="note">Сейчас <b>демо-режим</b>: VLD и подарки не настоящие, вход по слову «demo». В боевом режиме задай <span class="mono">BOT_TOKEN</span> и <span class="mono">ADMIN_SECRET</span>.</div>` : ""}
+        ${s.config.demo ? `<div class="note">Сейчас <b>демо-режим</b>: VLD, VDT и подарки не настоящие, вход по слову «demo». В боевом режиме задай <span class="mono">BOT_TOKEN</span> и <span class="mono">ADMIN_SECRET</span>.</div>` : ""}
         <h3>Доход платформы</h3>
         <div class="tiles">
-          ${tile("Сегодня", fmt(r.today), "VLD", "", "accent")}
-          ${tile("За 7 дней", fmt(r.week), "VLD")}
-          ${tile("За всё время", fmt(r.total), "VLD", `раунды ${fmt(r.by_source.rounds)} · переводы ${fmt(r.by_source.transfers)} · выводы ${fmt(r.by_source.payouts)}`)}
+          ${tile("Сегодня · VLD", fmt(r.today), "VLD", "", "accent")}
+          ${tile("За 7 дней · VLD", fmt(r.week), "VLD")}
+          ${tile("За всё время · VLD", fmt(r.total), "VLD", `раунды ${fmt(r.by_source.rounds)} · переводы ${fmt(r.by_source.transfers)} · выводы ${fmt(r.by_source.payouts)}`)}
+        </div>
+        <div class="tiles">
+          ${tile("Сегодня · VDT", fmtVdt(rv.today), "VDT", "", "accent")}
+          ${tile("За 7 дней · VDT", fmtVdt(rv.week), "VDT")}
+          ${tile("За всё время · VDT", fmtVdt(rv.total), "VDT", `раунды ${fmtVdt(rv.by_source.rounds)} · переводы ${fmtVdt(rv.by_source.transfers)} · выводы ${fmtVdt(rv.by_source.payouts)}`)}
+          ${tile("Сборы за запуск раундов", fmtVdt(rv.create_fees), "VDT", "0.1 VDT с каждого раунда")}
         </div>
         <h3>Требует внимания</h3>
         <div class="tiles">
-          ${tile("Заявки на вывод", c.pending_payouts, "", `на ${fmt(l.pending_payouts)} VLD`, c.pending_payouts ? "accent" : "")}
+          ${tile("Заявки на вывод", c.pending_payouts, "", `на ${fmt(l.pending_payouts)} VLD и ${fmtVdt(l.pending_payouts_vdt)} VDT`, c.pending_payouts ? "accent" : "")}
           ${tile("Подарки ждут выдачи", c.gift_withdrawals, "", "выдаёт бот-хранитель")}
           ${tile("Депозиты TON в ожидании", d.ton_pending, "", "за последние 2 часа")}
         </div>
         <h3>Обязательства перед игроками</h3>
         <div class="tiles">
-          ${tile("На балансах игроков", fmt(l.user_balances), "VLD", "могут быть выведены")}
-          ${tile("В банках живых раундов", fmt(l.locked_in_live_pools), "VLD", "уйдут организаторам и в комиссию")}
+          ${tile("На балансах игроков · VLD", fmt(l.user_balances), "VLD", "могут быть выведены в Stars")}
+          ${tile("На балансах игроков · VDT", fmtVdt(l.user_balances_vdt), "VDT", "могут быть выведены в TON")}
+          ${tile("В банках живых раундов", fmt(l.locked_in_live_pools), "VLD", `и ${fmtVdt(l.locked_in_live_pools_vdt)} VDT · уйдут организаторам и в комиссию`)}
           ${tile("Резерв на передачу подарков", fmt(l.gift_fee_reserve), "VLD", "оплачено игроками заранее")}
         </div>
         <h3>Платформа</h3>
@@ -257,8 +268,9 @@ td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
           ${tile("Игроков", fmt(c.users), "", c.banned ? `заблокировано: ${c.banned}` : "")}
           ${tile("Раундов", fmt(c.pools.live), "идёт", `завершено ${fmt(c.pools.finished)} · отменено ${fmt(c.pools.cancelled)}`)}
           ${tile("Подарков в эскроу", fmt(c.gifts_in_escrow))}
-          ${tile("Получено TON", (d.ton_nano / 1e9).toFixed(2), "TON", `зачислено ${fmt(d.ton_vld)} VLD · курс 1 TON = ${s.config.vld_per_ton} VLD`)}
-          ${tile("Выплачено игрокам", fmt(d.paid_out_vld), "VLD")}
+          ${tile("Получено TON", (d.ton_nano / 1e9).toFixed(2), "TON", `зачислено ${fmtVdt(d.ton_vdt_milli)} VDT · 1 TON = ${s.config.ton_to_vdt} VDT`)}
+          ${tile("Выплачено в Stars", fmt(d.paid_out_vld), "VLD")}
+          ${tile("Выплачено в TON", fmtVdt(d.paid_out_vdt), "VDT")}
         </div>
         <h3>Сверка депозитов TON</h3>
         <div class="toolbar"><button class="btn ghost" data-act="ton-scan">Проверить блокчейн сейчас</button>
@@ -275,17 +287,17 @@ td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
         return `<tr>
           <td class="mono">#${r.id}</td>
           <td><button type="button" class="link" data-user="${r.telegram_id}">${esc(r.username ? "@" + r.username : r.telegram_id)}</button></td>
-          <td>${ton ? "TON" : "Stars"}</td>
+          <td>${ton ? "TON" : "Stars"} <span class="muted">· ${esc(r.currency)}</span></td>
           <td class="mono"><button type="button" class="link mono" data-copy="${esc(r.destination)}" title="Скопировать">${esc(r.destination)}</button></td>
-          <td class="num">${fmt(r.amount)}</td>
-          <td class="num"><b>${ton ? r.net_ton.toFixed(2) + " TON" : fmt(r.net) + " Stars"}</b><div class="muted">комиссия ${fmt(r.commission)}</div></td>
+          <td class="num">${fmtCur(r.amount, r.currency)} ${esc(r.currency)}</td>
+          <td class="num"><b>${ton ? fmtVdt(r.net) + " TON" : fmt(r.net) + " Stars"}</b><div class="muted">комиссия ${fmtCur(r.commission, r.currency)} ${esc(r.currency)}</div></td>
           <td>${pill(r.status, PO[r.status])}</td><td class="muted">${when(r.ts)}</td>
           <td><div class="acts">${acts}</div></td></tr>`;
       });
       v.innerHTML = `<h2>Заявки на вывод</h2>
-        <div class="note"><b>Порядок:</b> сначала отправь деньги игроку, потом нажми «Выплачено». При «Отклонить» вся списанная сумма возвращается на баланс игрока. Перед выплатой открой игрока и проверь, откуда у него VLD.</div>
+        <div class="note"><b>Порядок:</b> сначала отправь деньги игроку, потом нажми «Выплачено». При «Отклонить» вся списанная сумма возвращается на баланс игрока. Перед выплатой открой игрока и проверь, откуда у него VLD или VDT. Stars выплачиваются из VLD, TON — из VDT.</div>
         <div class="toolbar">${seg("payouts", [["pending", "Ожидают"], ["paid", "Выплачены"], ["rejected", "Отклонены"], ["all", "Все"]])}</div>
-        ${table(["ID", "Игрок", "Способ", "Куда", "#Списано VLD", "#К выплате", "Статус", "Создана", ""], rows, "Заявок нет")}`;
+        ${table(["ID", "Игрок", "Способ", "Куда", "#Списано", "#К выплате", "Статус", "Создана", ""], rows, "Заявок нет")}`;
     },
 
     async pools(v) {
@@ -293,29 +305,29 @@ td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
       const rows = items.map((p) => `<tr>
         <td class="mono">#${p.id}</td><td>${esc(p.emoji)} ${esc(p.title)}</td><td>${MODE[p.mode] || esc(p.mode)}</td>
         <td><button type="button" class="link" data-user="${p.organizer_tid}">${esc(p.organizer)}</button></td>
-        <td class="num">${fmt(p.bank)}</td><td class="num">${p.participants} / ${p.entries}</td>
+        <td class="num">${fmtCur(p.bank, p.currency)} ${esc(p.currency)}</td><td class="num">${p.participants} / ${p.entries}</td>
         <td>${pill(p.status, PL[p.status])}${p.winner ? ` <span class="muted">→ ${esc(p.winner)}</span>` : ""}</td>
-        <td class="num">${p.status === "finished" ? fmt(p.commission) : "—"}</td>
+        <td class="num">${p.status === "finished" ? fmtCur(p.commission, p.currency) : "—"}</td>
         <td class="muted">${p.status === "live" ? (p.ends_ts ? "до " + when(p.ends_ts) : "бессрочно") : when(p.created_ts)}</td>
-        <td><div class="acts">${p.status === "live" ? `<button class="btn sm ghost" data-refund="${p.id}" data-bank="${p.bank}">Отменить с возвратом</button>` : ""}</div></td></tr>`);
+        <td><div class="acts">${p.status === "live" ? `<button class="btn sm ghost" data-refund="${p.id}" data-bank="${esc(fmtCur(p.bank, p.currency) + " " + p.currency)}">Отменить с возвратом</button>` : ""}</div></td></tr>`);
       v.innerHTML = `<h2>Раунды</h2>
         <div class="note">«Отменить с возвратом» — аварийная мера для спорных раундов: <b>все ставки возвращаются игрокам</b>, подарок — организатору, комиссия не берётся. Результат честного раунда изменить нельзя.</div>
         <div class="toolbar">${seg("pools", [["live", "Идут"], ["finished", "Завершены"], ["cancelled", "Отменены"], ["all", "Все"]])}</div>
-        ${table(["ID", "Подарок", "Режим", "Организатор", "#Банк VLD", "#Игроков / ставок", "Статус", "#Комиссия", "Время", ""], rows, "Раундов нет")}`;
+        ${table(["ID", "Подарок", "Режим", "Организатор", "#Банк", "#Игроков / ставок", "Статус", "#Комиссия", "Время", ""], rows, "Раундов нет")}`;
     },
 
     async users(v) {
       const { items } = await api("users?q=" + encodeURIComponent(filters.users));
       const rows = items.map((u) => `<tr>
         <td><button type="button" class="link" data-user="${u.telegram_id}">${esc(u.name)}</button>${u.banned ? " " + pill("banned", "бан") : ""}</td>
-        <td class="mono">${u.telegram_id}</td><td class="num"><b>${fmt(u.balance)}</b></td>
+        <td class="mono">${u.telegram_id}</td><td class="num"><b>${fmt(u.balance)}</b> VLD<div class="muted">${fmtVdt(u.balance_vdt)} VDT</div></td>
         <td class="num">${fmt(u.staked)}</td><td class="num">${fmt(u.earned)}</td><td class="num">${u.level}</td>
         <td class="muted">${when(u.registered_ts)}</td>
         <td><div class="acts"><button class="btn sm ghost" data-ban="${u.telegram_id}" data-action="${u.banned ? "unban" : "ban"}">${u.banned ? "Разблокировать" : "Заблокировать"}</button></div></td></tr>`);
       v.innerHTML = `<h2>Игроки</h2>
         <form class="toolbar" id="user-search"><input class="inp" id="user-q" placeholder="Telegram ID или @username" value="${esc(filters.users)}">
           <button class="btn ghost" type="submit">Найти</button><span class="muted">показаны первые 50 по балансу</span></form>
-        ${table(["Игрок", "Telegram ID", "#Баланс VLD", "#Поставил", "#Получил как организатор", "#Уровень", "Регистрация", ""], rows, "Никого не найдено")}`;
+        ${table(["Игрок", "Telegram ID", "#Баланс", "#Поставил", "#Получил как организатор", "#Уровень", "Регистрация", ""], rows, "Никого не найдено")}`;
       $("user-search").addEventListener("submit", (e) => { e.preventDefault(); filters.users = $("user-q").value.trim(); show("users"); });
     },
 
@@ -335,13 +347,14 @@ td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
 
     async revenue(v) {
       const d = await api("revenue");
-      const rows = d.items.map((r) => `<tr><td class="muted">${when(r.ts)}</td><td>${esc(r.title)}</td><td class="num pos"><b>+${fmt(r.amount)}</b></td></tr>`);
+      const rows = d.items.map((r) => `<tr><td class="muted">${when(r.ts)}</td><td>${esc(r.title)}</td><td class="num pos"><b>+${fmtCur(r.amount, r.currency)}</b> ${esc(r.currency)}</td></tr>`);
       const deps = d.ton_deposits.map((t) => `<tr><td class="muted">${when(t.ts)}</td><td>${esc(t.user)}</td>
-        <td class="num">${t.ton.toFixed(2)} TON</td><td class="num">${fmt(t.vld)}</td><td class="mono muted">${esc((t.tx_hash || "").slice(0, 22))}…</td></tr>`);
+        <td class="num">${t.ton.toFixed(2)} TON</td><td class="num">${fmtVdt(t.vld)}</td><td class="mono muted">${esc((t.tx_hash || "").slice(0, 22))}…</td></tr>`);
       v.innerHTML = `<h2>Доход</h2>
         <div class="tiles">${tile("Комиссия раундов", fmt(stats.revenue.by_source.rounds), "VLD")}${tile("Комиссия переводов", fmt(stats.revenue.by_source.transfers), "VLD")}${tile("Комиссия выводов", fmt(stats.revenue.by_source.payouts), "VLD")}${tile("Итого", fmt(stats.revenue.total), "VLD", "", "accent")}</div>
-        <h3>Последние начисления</h3>${table(["Когда", "Источник", "#VLD"], rows, "Дохода пока нет")}
-        <h3>Депозиты TON</h3>${table(["Когда", "Игрок", "#Пришло", "#Зачислено VLD", "Транзакция"], deps, "Депозитов TON пока нет")}`;
+        <div class="tiles">${tile("Комиссия раундов", fmtVdt(stats.revenue_vdt.by_source.rounds), "VDT")}${tile("Комиссия переводов", fmtVdt(stats.revenue_vdt.by_source.transfers), "VDT")}${tile("Комиссия выводов", fmtVdt(stats.revenue_vdt.by_source.payouts), "VDT")}${tile("Сборы за запуск", fmtVdt(stats.revenue_vdt.create_fees), "VDT")}${tile("Итого комиссий", fmtVdt(stats.revenue_vdt.total), "VDT", "без сборов за запуск", "accent")}</div>
+        <h3>Последние начисления</h3>${table(["Когда", "Источник", "#Сумма"], rows, "Дохода пока нет")}
+        <h3>Депозиты TON</h3>${table(["Когда", "Игрок", "#Пришло", "#Зачислено VDT", "Транзакция"], deps, "Депозитов TON пока нет")}`;
     },
   };
 
@@ -352,14 +365,15 @@ td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
     $("drawer-card").innerHTML = `
       <div class="drawer-head"><div><h2 style="margin:0">${esc(u.name)}</h2><span class="mono muted">ID ${u.telegram_id}</span>${u.banned ? " " + pill("banned", "заблокирован") : ""}</div>
         <button class="btn sm ghost" data-act="drawer-close">Закрыть</button></div>
-      <div class="kv"><span>Баланс</span><b>${fmt(u.balance)} VLD</b>
+      <div class="kv"><span>Баланс VLD</span><b>${fmt(u.balance)} VLD</b>
+        <span>Баланс VDT</span><b>${fmtVdt(u.balance_vdt)} VDT</b>
         <span>Пригласил</span><span>${u.referred_by ? `<button type="button" class="link" data-user="${u.referred_by}">ID ${u.referred_by}</button>` : "—"}</span>
         <span>Реферальный доход</span><span>${fmt(u.referral_earned)} VLD</span></div>
       <button class="btn sm ghost" data-ban="${u.telegram_id}" data-action="${u.banned ? "unban" : "ban"}" data-drawer="1">${u.banned ? "Разблокировать" : "Заблокировать"}</button>
       <h3>Подарки</h3>
       ${u.gifts.length ? u.gifts.map((g) => `<div style="padding:4px 0">${esc(g.emoji)} ${esc(g.name)} ${pill(g.status, GS[g.status])}</div>`).join("") : `<div class="muted">нет</div>`}
       <h3>Последние операции</h3>
-      ${u.ledger.length ? `<div class="tbl-wrap"><table><tbody>${u.ledger.map((r) => `<tr><td class="muted">${when(r.ts)}</td><td>${esc(r.title)}</td><td class="num ${r.amount >= 0 ? "pos" : "neg"}"><b>${r.amount >= 0 ? "+" : "−"}${fmt(Math.abs(r.amount))}</b></td></tr>`).join("")}</tbody></table></div>` : `<div class="muted">операций нет</div>`}`;
+      ${u.ledger.length ? `<div class="tbl-wrap"><table><tbody>${u.ledger.map((r) => `<tr><td class="muted">${when(r.ts)}</td><td>${esc(r.title)}</td><td class="num ${r.amount >= 0 ? "pos" : "neg"}"><b>${r.amount >= 0 ? "+" : "−"}${fmtCur(Math.abs(r.amount), r.currency)}</b> ${esc(r.currency)}</td></tr>`).join("")}</tbody></table></div>` : `<div class="muted">операций нет</div>`}`;
     $("drawer").classList.remove("hid");
   }
 
@@ -393,8 +407,8 @@ td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
       return;
     }
     if ((el = t("[data-refund]"))) {
-      if (!confirm(`Отменить раунд #${el.dataset.refund}? Игрокам вернётся ${fmt(el.dataset.bank)} VLD, подарок вернётся организатору. Отменить это будет нельзя.`)) return;
-      try { const r = await api(`pools/${el.dataset.refund}/refund`, {}); toast(`Раунд отменён, возвращено ${fmt(r.refunded)} VLD`); show(tab); }
+      if (!confirm(`Отменить раунд #${el.dataset.refund}? Игрокам вернётся ${el.dataset.bank}, подарок вернётся организатору. Отменить это будет нельзя.`)) return;
+      try { const r = await api(`pools/${el.dataset.refund}/refund`, {}); toast("Раунд отменён, ставки возвращены"); show(tab); }
       catch (err) { toast(err.message); }
       return;
     }

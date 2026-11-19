@@ -6,7 +6,7 @@
        #shell
          aside#sidebar   — desktop only: wordmark, nav, balance card, theme switch
          main#content    — .vl-demo (demo mode), header#topbar, #screens (the scroller; JS resets its scrollTop)
-         nav#tabbar      — phone only: 5 items, raised «Создать» in the middle (.nb-ctr)
+         nav#tabbar      — phone only: floating glass capsule, 5 items, raised «Создать» in the middle (.nb-ctr)
    Nav items carry data-tab / data-act; JS marks the current one with .on + aria-current="page".
 
    Layout, CSS only (no matchMedia): phone ≤ 860px (mobile-first base rules), desktop ≥ 861px.
@@ -68,8 +68,8 @@ body {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  /* room for the fixed tab bar + safe area */
-  padding-bottom: calc(var(--vl-tabbar-h) + 24px + env(safe-area-inset-bottom, 0px));
+  /* room for the floating tab bar (its 10px lift + the bar) + safe area, so the last row is never under the glass */
+  padding-bottom: calc(var(--vl-tabbar-h) + 34px + env(safe-area-inset-bottom, 0px));
 }
 #screens::-webkit-scrollbar { width: 0; height: 0; }
 /* one screen at a time; the change is animated by VLFx.transition (JS, ≤ 220 ms, cancellable) */
@@ -135,51 +135,82 @@ body {
 }
 .vl-ton .ic { color: var(--accent-text); }
 
+/* ── currencies: VLD — gold (Stars), VDT — TON blue. .vl-cur-vld / .vl-cur-vdt set --cur (fill, icon, tint) and
+   --cur-text (the same hue as text, AA-checked in tests/test_contrast.py); components read only these two. ── */
+.vl-cur-vld { --cur: var(--vld); --cur-text: var(--vld-text); }
+.vl-cur-vdt { --cur: var(--vdt); --cur-text: var(--vdt-text); }
+
+/* balance chips in the top bar: one per currency, each opens top-up of its own currency */
+.vl-bals { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .vl-bal {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   min-height: 34px;
-  padding: 0 4px 0 12px;
+  margin: 0;
+  padding: 0 12px 0 9px;
   box-sizing: border-box;
-  border: 1px solid var(--vl-line);
+  border: 1px solid var(--line-strong);
+  border-color: color-mix(in srgb, var(--cur) 38%, var(--vl-line));
   border-radius: var(--r-pill);
   background: var(--surface);
+  background: color-mix(in srgb, var(--cur) 11%, var(--surface));
+  color: var(--text);
+  font: inherit;
   white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
-.vl-bal > .ic { width: 16px; height: 16px; color: var(--accent-text); }
+/* 34px to the eye, a 44px hit area around it */
+.vl-bal::after { content: ""; position: absolute; inset: -5px -2px; border-radius: var(--r-pill); }
+.vl-bal > .ic { width: 16px; height: 16px; color: var(--cur); }
 .vl-bal-val { font-weight: 700; font-size: var(--fs-sm); color: var(--text); }
-.vl-bal-unit { font-size: var(--fs-xs); color: var(--muted); font-weight: 600; }
-.vl-bal-plus {
-  position: relative;
-  min-height: 26px;
-  width: 26px;
-  margin-left: 2px;
-  border-radius: var(--r-pill);
-}
-/* «Пополнить» is a primary action: 26px to the eye, a 44px hit area around it */
-.vl-bal-plus::after {
-  content: "";
-  position: absolute;
-  inset: -9px;
-  border-radius: var(--r-pill);
-}
-.vl-bal-plus .ic { width: 16px; height: 16px; }
+.vl-bal-unit { font-size: var(--fs-xs); color: var(--cur-text); font-weight: 700; letter-spacing: .02em; }
+.vl-bal:focus-visible { outline: none; box-shadow: var(--focus); }
+.vl-bal:active { transform: scale(.97); }
 
-/* ── phone tab bar ── */
+/* currency tag on round cards and the currency filter chips on the feed */
+.tag.vl-cur-tag { display: inline-flex; align-items: center; gap: 3px; color: var(--cur-text); }
+.tag.vl-cur-tag .ic { width: 12px; height: 12px; color: var(--cur); }
+.vl-chip.vl-cur-vld .ic, .vl-chip.vl-cur-vdt .ic { color: var(--cur); }
+.vl-chip.vl-cur-vld.is-on .ic, .vl-chip.vl-cur-vdt.is-on .ic { color: inherit; }
+
+/* ── phone tab bar: a floating glass capsule, inset from the screen edges and lifted above the home indicator.
+   Translucent theme surface + backdrop blur; where backdrop-filter is unsupported it falls back to a solid surface
+   (the @supports block below). The active item is a lit pill in the accent colour. ── */
 #tabbar {
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  left: max(10px, env(safe-area-inset-left, 0px));
+  right: max(10px, env(safe-area-inset-right, 0px));
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   z-index: 100;
   display: flex;
   align-items: stretch;
-  height: calc(var(--vl-tabbar-h) + env(safe-area-inset-bottom, 0px));
-  padding: 0 6px env(safe-area-inset-bottom, 0px);
+  gap: 2px;
+  max-width: 520px;
+  height: var(--vl-tabbar-h);
+  margin: 0 auto;
+  padding: 6px;
   box-sizing: border-box;
-  border-top: 1px solid var(--vl-line);
+  border: 1px solid var(--line-strong);
+  border-radius: 24px;
   background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 14px 34px -14px rgba(0, 0, 0, .7);
+}
+:root[data-theme="light"] #tabbar {
+  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 74%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .8), 0 12px 30px -14px rgba(11, 27, 51, .32);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #tabbar,
+  :root[data-theme="light"] #tabbar { background: var(--surface); }
 }
 #tabbar .nb,
 #tabbar .nb-ctr {
@@ -194,33 +225,23 @@ body {
   justify-content: center;
   gap: 4px;
   margin: 0;
-  padding: 6px 2px;
+  padding: 4px 2px;
   border: 0;
-  border-radius: var(--r-sm);
+  border-radius: 18px;
   background: transparent;
   color: var(--muted);
   font: 600 11px/1.1 var(--font);
   cursor: pointer;
-  transition: color var(--dur) var(--ease);
+  transition: color var(--dur) var(--ease), background-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
 #tabbar .nb .ic { width: 22px; height: 22px; }
 #tabbar .nb.on,
 #tabbar .nb-ctr.on { color: var(--accent-text); }
-/* active indicator: short bar at the top edge, no glow */
-#tabbar .nb::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 20px;
-  height: 3px;
-  margin-left: -10px;
-  border-radius: 0 0 3px 3px;
-  background: var(--accent-text);
-  transform: scaleX(0);
-  transition: transform var(--dur) var(--ease);
+/* active item: a lit pill — accent tint with a hairline of the accent, no glow */
+#tabbar .nb.on {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-text) 30%, transparent);
 }
-#tabbar .nb.on::before { transform: scaleX(1); }
 #tabbar .nb:focus-visible,
 #tabbar .nb-ctr:focus-visible { outline: none; box-shadow: var(--focus); }
 
@@ -229,7 +250,7 @@ body {
   place-items: center;
   width: 48px;
   height: 48px;
-  margin-top: -22px;
+  margin-top: -24px;
   border-radius: 16px;
   background: var(--accent-grad);
   color: var(--on-accent);
@@ -239,6 +260,7 @@ body {
 .nb-fab .ic { width: 24px; height: 24px; }
 #tabbar .nb-ctr:active .nb-fab { transform: scale(.94); }
 #tabbar .nb-ctr.on .nb-fab { box-shadow: var(--shadow-cta), 0 0 0 2px var(--surface), 0 0 0 4px var(--accent-text); }
+#tabbar .nb-ctr .nb-fab { border: 1px solid rgba(255, 255, 255, .16); }
 
 /* ── desktop sidebar ── */
 #sidebar { display: none; }
@@ -304,14 +326,16 @@ body {
   margin: 4px 0 12px;
   white-space: nowrap;
 }
-.vl-side-bal-row .ic { width: 18px; height: 18px; color: var(--accent-text); align-self: center; }
+.vl-side-bal-row .ic { width: 18px; height: 18px; color: var(--cur, var(--accent-text)); align-self: center; }
+.vl-side-bal-row + .vl-side-bal-row { margin-top: -8px; }
 .vl-side-bal-val { font-size: var(--fs-xl); font-weight: 700; color: var(--text); }
-.vl-side-bal-unit { font-size: var(--fs-sm); color: var(--muted); font-weight: 600; }
+.vl-side-bal-unit { font-size: var(--fs-sm); color: var(--cur-text, var(--muted)); font-weight: 700; }
 .vl-side-theme { justify-content: flex-start; color: var(--muted); }
 .vl-side-theme .ic { width: 18px; height: 18px; }
 
 @media (hover: hover) and (pointer: fine) {
   #tabbar .nb:not(.on):hover { color: var(--text); }
+  .vl-bal:hover { background: color-mix(in srgb, var(--cur) 18%, var(--surface)); }
   .vl-side-link:not(.on):hover { background: var(--surface-2); color: var(--text); }
   .vl-side-theme:hover { color: var(--text); }
 }
@@ -355,10 +379,16 @@ body {
   #toast { bottom: 32px; left: calc(248px + (100% - 248px) / 2); }
 }
 
-/* very narrow phones: drop the unit to keep the top bar on one line */
+/* phones: compact balance chips — the icon names the currency (star = VLD, TON = VDT), the unit stays for readers */
+@media (max-width: 480px) {
+  #topbar .vl-bal-unit { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  #topbar .vl-bal { padding: 0 10px 0 8px; gap: 4px; }
+  #topbar .vl-bals { gap: 4px; }
+}
+/* very narrow phones: the theme switch is also in Профиль → Оформление */
 @media (max-width: 359px) {
-  #topbar .vl-bal-unit { display: none; }
   #topbar { gap: 6px; padding-left: 12px; padding-right: 12px; }
+  #topbar .vl-top-btn.vl-btn-icon { display: none; }
 }
 
 /* ── splash: quiet wordmark fade on the theme background (JS adds .out after init, then removes the node
@@ -417,7 +447,7 @@ body {
 #toast {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--vl-tabbar-h) + 18px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(var(--vl-tabbar-h) + 22px + env(safe-area-inset-bottom, 0px));
   z-index: 9000;
   max-width: min(420px, calc(100% - 32px));
   width: max-content;
@@ -443,7 +473,8 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #app, #tabbar .nb, #tabbar .nb::before, .nb-fab, .vl-side-link, #splash, #toast, #toast.on { transition: none; }
+  #app, #tabbar .nb, .nb-fab, .vl-side-link, .vl-bal, #splash, #toast, #toast.on { transition: none; }
+  .vl-bal:active { transform: none; }
   .vl-splash-mark span, .vl-splash-mark i, .vl-splash-sub, .vl-vault-outer, .vl-vault-mid, .vl-vault-core { animation: none; }
   .vl-vault-check { animation: none; stroke-dashoffset: 0; }
 }

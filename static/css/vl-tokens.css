@@ -46,6 +46,11 @@
   --success: #34d399;
   --warn: #f5b544;
   --danger: #ff6b7a;
+  /* currencies: --vld / --vdt fill icons and tints, --*-text is the same hue as text (AA on bg / surface / surface-2) */
+  --vld: #f5b544;
+  --vld-text: #f5b544;
+  --vdt: #0098ea;
+  --vdt-text: #38b2ff;
   --field: rgba(255, 255, 255, .04);
   --skeleton: rgba(255, 255, 255, .06);
   --skeleton-hi: rgba(255, 255, 255, .12);
@@ -77,6 +82,10 @@
   --success: #067a4a;
   --warn: #a85a07;
   --danger: #cc2f35;
+  --vld: #e09a2a;
+  --vld-text: #9a5a00;
+  --vdt: #0098ea;
+  --vdt-text: #006aab;
   --field: #ffffff;
   --skeleton: rgba(11, 27, 51, .06);
   --skeleton-hi: rgba(11, 27, 51, .11);

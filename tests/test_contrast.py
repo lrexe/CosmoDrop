@@ -20,6 +20,9 @@ PAIRS = [
     ("success", "bg"), ("success", "surface"), ("success", "surface-2"),
     ("warn", "bg"), ("warn", "surface"), ("warn", "surface-2"),
     ("danger", "bg"), ("danger", "surface"), ("danger", "surface-2"),
+    # валюты: золотой VLD и TON-синий VDT как цвет текста (единицы, суммы в чипах баланса и в истории)
+    ("vld-text", "bg"), ("vld-text", "surface"), ("vld-text", "surface-2"),
+    ("vdt-text", "bg"), ("vdt-text", "surface"), ("vdt-text", "surface-2"),
 ]
 # Полупрозрачные фоны: (текст, фон, подложки, на которых этот фон встречается). --field — поле ввода,
 # muted на нём — плейсхолдер; поле лежит на странице, на карточке и на --surface-2.
@@ -28,7 +31,7 @@ OVER_PAIRS = [
     ("text", "field", ("bg", "surface", "surface-2")),
 ]
 REQUIRED = ["bg", "bg-glow", "surface", "surface-2", "vl-line", "text", "muted", "accent", "accent-2",
-            "on-accent", "accent-text", "success", "warn", "danger", "shadow-1", "shadow-2", "shadow-cta",
+            "on-accent", "accent-text", "success", "warn", "danger", "vld", "vld-text", "vdt", "vdt-text", "shadow-1", "shadow-2", "shadow-cta",
             "focus", "field", "r-sm", "r-md", "r-lg", "font", "vl-mono"]
 
 

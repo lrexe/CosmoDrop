@@ -426,6 +426,8 @@
   transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
 }
 .vl-seg-btn.on { background: var(--accent-soft); color: var(--text); }
+/* round stats: the unit after an amount is the round's currency (set by JS from pool.currency) */
+.vl-rd-stat [data-cur-u] { font-weight: 700; letter-spacing: .02em; }
 .vl-seg-btn:focus-visible { outline: none; box-shadow: var(--focus); }
 
 /* ══ WHEEL ══ */

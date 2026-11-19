@@ -225,6 +225,26 @@
 .vl-dlg-recip { min-height: 18px; margin-top: -2px; font-size: var(--fs-sm); color: var(--muted); }
 .vl-dlg-recip.ok { color: var(--success); font-weight: 600; }
 .vl-dlg-recip.err { color: var(--danger); }
+/* recipient preview after the @username lookup: photo (or a person icon) + name + @username */
+.vl-dlg-recip.has-av { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text); }
+.vl-recip-av {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 16px;
+}
+.vl-recip-av .ic { width: 16px; height: 16px; }
+.vl-recip-av .vl-av-img { width: 100%; height: 100%; object-fit: cover; }
+.vl-recip-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vl-recip-u { flex: none; font-weight: 500; color: var(--muted); }
+.vl-dlg-seg .vl-seg-btn[data-trc="VLD"] .ic, .vl-dlg-seg .vl-seg-btn[data-pom="VLD"] .ic, .vl-dlg-seg .vl-seg-btn[data-tum="stars"] .ic { color: var(--vld); }
+.vl-dlg-seg .vl-seg-btn[data-trc="VDT"] .ic, .vl-dlg-seg .vl-seg-btn[data-pom="VDT"] .ic, .vl-dlg-seg .vl-seg-btn[data-tum="ton"] .ic { color: var(--vdt); }
 
 /* ── segmented control (Stars / TON, TON / Stars) ── */
 .vl-dlg-seg {

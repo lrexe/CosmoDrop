@@ -1369,7 +1369,9 @@ def leaderboard(period):
     if period not in PERIODS:
         return err("Неизвестный период", 400)
     user = me()
-    q = db.session.query(PoolEntry.user_id, db.func.sum(PoolEntry.amount).label("vol"))
+    # оборот — только VLD-раунды: VDT хранится в милли, складывать их с VLD нельзя
+    q = (db.session.query(PoolEntry.user_id, db.func.sum(PoolEntry.amount).label("vol"))
+         .join(Pool, Pool.id == PoolEntry.pool_id).filter(db.func.coalesce(Pool.currency, "VLD") == "VLD"))
     wins_q = db.session.query(Pool.winner_id, db.func.count(Pool.id)).filter(Pool.status == "finished")
     if PERIODS[period]:
         since = now() - timedelta(days=PERIODS[period])
@@ -1399,7 +1401,7 @@ def winners():
         art = p.gift.to_dict()  # картинка и анимация подарка — те же адреса, что в инвентаре
         items.append({"pool_id": p.id, "title": p.gift.name, "emoji": p.gift.emoji,
                       "winner": display_name(p.winner), "ts": ts(p.finished_at),
-                      "bank": p.bank, "image": art["image"], "anim": art["anim"]})
+                      "bank": p.bank, "currency": p.currency or "VLD", "image": art["image"], "anim": art["anim"]})
     return jsonify({"items": items})
 
 
@@ -1589,7 +1591,8 @@ def admin_stats():
                                             LedgerTx.currency == "VDT")},
         "liabilities": {
             "user_balances": _sum(User.stars_balance),
-            "locked_in_live_pools": _sum(Pool.bank, Pool.status == "live"),
+            "locked_in_live_pools": _sum(Pool.bank, Pool.status == "live", db.func.coalesce(Pool.currency, "VLD") == "VLD"),
+            "locked_in_live_pools_vdt": _sum(Pool.bank, Pool.status == "live", Pool.currency == "VDT"),
             "pending_payouts": _sum(PayoutRequest.amount, PayoutRequest.status == "pending",
                                     PayoutRequest.currency == "VLD"),
             "user_balances_vdt": _sum(User.vdt_balance),
@@ -1632,6 +1635,7 @@ def admin_pools():
         entries = PoolEntry.query.filter_by(pool_id=p.id).all()
         out.append({
             "id": p.id, "mode": p.mode, "status": p.status, "title": p.gift.name, "emoji": p.gift.emoji,
+            "currency": p.currency or "VLD",
             "organizer": display_name(p.organizer), "organizer_tid": p.organizer.telegram_id,
             "min_stake": p.min_stake, "bank": sum(e.amount for e in entries), "entries": len(entries),
             "participants": len({e.user_id for e in entries}),
@@ -1671,7 +1675,7 @@ def admin_users():
     rows = q.order_by(User.stars_balance.desc()).limit(50).all()
     return jsonify({"items": [{
         "telegram_id": u.telegram_id, "name": display_name(u), "first_name": u.first_name,
-        "balance": u.stars_balance, "banned": bool(u.is_banned), "level": u.level or 1,
+        "balance": u.stars_balance, "balance_vdt": u.vdt_balance or 0, "banned": bool(u.is_banned), "level": u.level or 1,
         "staked": u.total_spent or 0, "earned": u.total_earned or 0,
         "registered_ts": ts(u.registered_at),
     } for u in rows]})
@@ -1694,7 +1698,7 @@ def admin_user(tid):
     ledger = LedgerTx.query.filter_by(user_id=u.id).order_by(LedgerTx.id.desc()).limit(40).all()
     return jsonify({
         "telegram_id": u.telegram_id, "name": display_name(u), "balance": u.stars_balance,
-        "banned": bool(u.is_banned),
+        "balance_vdt": u.vdt_balance or 0, "banned": bool(u.is_banned),
         "referred_by": u.referred_by, "referral_earned": u.referral_earned or 0,
         "gifts": [g.to_dict() for g in GiftItem.query.filter(
             GiftItem.owner_id == u.id, GiftItem.status != "withdrawn").all()],

@@ -9,7 +9,17 @@
   const MODE_INFO = { wheel: { name: "Колесо", icon: "i-wheel" }, vault: { name: "Сейф", icon: "i-lock" },
     auction: { name: "Аукцион", icon: "i-eye-off" } };
   const MODE_SCREEN = { wheel: "wheel", vault: "vault", auction: "auction" };
-  const STAKE_CHIPS = { wheel: [5, 25, 50, 100], vault: [5, 10, 25, 50], auction: [20, 50, 100, 250] };
+  // быстрые суммы на экране создания, в единицах валюты (VDT — милли: 100 = 0.1 VDT)
+  const STAKE_CHIPS = {
+    VLD: { wheel: [5, 25, 50, 100], vault: [5, 10, 25, 50], auction: [20, 50, 100, 250] },
+    VDT: { wheel: [100, 500, 1000, 5000], vault: [50, 100, 250, 500], auction: [500, 1000, 2500, 5000] },
+  };
+  // допустимая минимальная ставка / цена попытки (как MIN_STAKE_RANGE на сервере)
+  const STAKE_RANGE = { VLD: [1, 10000], VDT: [10, 100000] };
+  const CUR_ICON = { VLD: "i-star", VDT: "i-ton" };
+  const CANCEL_REASON = { no_players: "не набралось участников", not_cracked: "сейф не вскрыли",
+    organizer: "отменил организатор", admin: "отменено администрацией" };
+  const CANCELLED = "Отменён — ставки возвращены";
   const MODE_HINT = {
     wheel: "Шанс каждого участника равен его доле в банке. Колесо крутится по таймеру.",
     vault: "Участники платят за попытку угадать секретное число. Угадавший забирает подарок сразу.",
@@ -19,7 +29,8 @@
   const state = {
     profile: null, pools: { live: [], finished: [] }, filter: "all",
     pool: null, back: "home", wheelMode: "av", wheelRot: 0, spinning: false,
-    create: { mode: "wheel", gift: null }, gifts: [], lb: "month", offset: 0, pt: "inv",
+    create: { mode: "wheel", gift: null, cur: "VLD" }, gifts: [], lb: "month", offset: 0, pt: "inv",
+    channels: { items: [], pending: [] },
   };
 
   // ------------------------------------------------------------------ утилиты
@@ -27,6 +38,34 @@
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const fmt = (n) => (Number(n) || 0).toLocaleString("ru-RU");
   const nowTs = () => Math.floor(Date.now() / 1000) + state.offset;
+
+  // ---- две валюты. VLD — целые; VDT в JSON всегда в милли (1 VDT = 1000), на экране — до 3 знаков без хвостовых
+  // нулей и с точкой, как в сообщениях сервера: 1250 → «1.25». Никакой код здесь не пересчитывает VLD в VDT.
+  const curOf = (p) => (p && p.currency === "VDT" ? "VDT" : "VLD");
+  function fmtAmt(n, cur) {
+    if (cur !== "VDT") return fmt(n);
+    const v = Math.round(Number(n) || 0), a = Math.abs(v);
+    const frac = String(a % 1000).padStart(3, "0").replace(/0+$/, "");
+    return (v < 0 ? "−" : "") + fmt(Math.floor(a / 1000)) + (frac ? "." + frac : "");
+  }
+  const fmtCur = (n, cur) => fmtAmt(n, cur) + " " + (cur === "VDT" ? "VDT" : "VLD");
+  const amtHtml = (n, cur) => `<span class="num">${fmtAmt(n, cur)}</span><small>${cur === "VDT" ? "VDT" : "VLD"}</small>`;
+  // значение для поля ввода (без разделителей тысяч): 1250 милли → "1.25"
+  const toInput = (n, cur) => (cur === "VDT" ? String(+(n / 1000).toFixed(3)) : String(n));
+  // ввод пользователя → единицы валюты (VDT — милли); NaN, если это не число нужного вида
+  function toUnits(raw, cur) {
+    const s = String(raw == null ? "" : raw).trim().replace(",", ".");
+    if (cur === "VDT") return /^\d+(?:\.\d{0,3})?$|^\.\d{1,3}$/.test(s) ? Math.round(parseFloat(s) * 1000) : NaN;
+    return /^\d+$/.test(s) ? parseInt(s, 10) : NaN;
+  }
+  // комиссия как на сервере: в промилле, округление вниз
+  const feeOf = (amount, rate) => Math.floor(amount * Math.round(rate * 1000) / 1000);
+  const bal = (cur) => {
+    const b = state.profile && state.profile.balances;
+    return b ? (Number(b[cur]) || 0) : 0;
+  };
+  // поле суммы: для VDT нужна точка на экранной клавиатуре телефона
+  const amountMode = (el, cur) => { el.inputMode = cur === "VDT" ? "decimal" : "numeric"; };
 
   function toast(msg) {
     const t = $("toast"); t.textContent = msg; t.classList.add("on");
@@ -63,11 +102,19 @@
     return data;
   }
 
-  function setBalance(v) {
-    if (state.profile) state.profile.balance = v;
-    // the balance «rolls» to the new value (VLFx.countUp: instant with reduced motion or in a hidden tab)
-    ["tb-stars-val", "sb-stars-val", "pf-bal"].forEach((id) => VLFx.countUp($(id), v));
+  // b — объект `balances` из ответа сервера: {VLD, VDT} (VDT в милли). Без него ничего не трогаем.
+  function setBalances(b) {
+    if (!b) return;
+    const v = { VLD: Number(b.VLD) || 0, VDT: Number(b.VDT) || 0 };
+    if (state.profile) { state.profile.balances = v; state.profile.balance = v.VLD; }
+    // VLD «докручивается» (VLFx.countUp: сразу при reduced motion или в скрытой вкладке); countUp считает целыми,
+    // поэтому дробный VDT просто подставляем
+    ["tb-vld-val", "sb-vld-val", "pf-vld"].forEach((id) => VLFx.countUp($(id), v.VLD));
+    ["tb-vdt-val", "sb-vdt-val", "pf-vdt"].forEach((id) => { $(id).textContent = fmtAmt(v.VDT, "VDT"); });
+    if ($("sc-create").classList.contains("on")) renderCreateSummary(); // хватает ли VDT на запуск
   }
+  // ответы, где сервер вернул только VLD (`balance`), — VDT остаётся прежним
+  const setVld = (v) => setBalances({ VLD: v, VDT: bal("VDT") });
 
   // ------------------------------------------------------------------ навигация
   const SCREEN_TITLE = { home: "Раунды", events: "Лидеры", create: "Новый раунд", profile: "Профиль",
@@ -200,8 +247,9 @@
   function poolCard(p, featured) {
     const live = p.status === "live";
     const m = MODE_INFO[p.mode] || { name: p.mode, icon: "i-rounds" };
+    const cur = curOf(p);
     const bank = p.bank == null ? HIDDEN
-      : `<span class="num" data-bank="${p.id}" data-v="${p.bank}">${fmt(p.bank)}</span>`;
+      : `<span class="num" data-bank="${p.id}" data-v="${p.bank}" data-cur="${cur}">${fmtAmt(p.bank, cur)}</span>`;
     const people = p.participants == null ? HIDDEN : `<span class="num">${fmt(p.participants)}</span>`;
     let third, bar = null, metas;
     if (!live) {
@@ -211,16 +259,19 @@
     } else if (p.mode === "vault") {
       third = stat("Занято чисел", `<span class="num">${p.taken}/${p.vault_max}</span>`);
       bar = p.vault_max ? p.taken / p.vault_max * 100 : 0;
-      metas = meta("Попытка", fmt(p.min_stake) + " VLD") + meta("Окончание", "бессрочно");
+      // сейф живёт 6 часов: не вскрыли — раунд отменяется с возвратом
+      metas = meta("Попытка", fmtCur(p.min_stake, cur))
+        + meta("Осталось", p.ends_ts ? `<span data-ends="${p.ends_ts}">—</span>` : "—");
     } else {
       third = stat(p.mode === "auction" ? "До раскрытия" : "Осталось",
         `<span class="num" data-ends="${p.ends_ts}">—</span>`);
       bar = timeBar(p);
-      metas = meta("Мин. ставка", fmt(p.min_stake) + " VLD")
-        + (p.mode === "auction" && p.my_total ? meta("Твоя ставка", fmt(p.my_total) + " VLD") : "");
+      metas = meta("Мин. ставка", fmtCur(p.min_stake, cur))
+        + (p.mode === "auction" && p.my_total ? meta("Твоя ставка", fmtCur(p.my_total, cur)) : "");
     }
     const status = live ? `<span class="tag tag-live">идёт</span>` : `<span class="tag">завершён</span>`;
     const mine = p.is_organizer ? `<span class="tag tag-accent">твой раунд</span>` : "";
+    const curTag = `<span class="tag vl-cur-tag vl-cur-${cur.toLowerCase()}">${icon(CUR_ICON[cur], "ic-sm")}${cur}</span>`;
     const tid = `pc-t-${p.id}`;
     const cls = "vl-pc" + (featured ? " vl-pc-feat" : "") + (live ? "" : " vl-pc-done");
     return `<div class="vl-cell${featured ? " vl-cell-feat" : ""}">
@@ -229,12 +280,12 @@
         <div class="vl-pc-head">
           <div class="vl-pc-gift" data-tilt-float>${VLFx.giftImg(p, "vl-pc-pic")}</div>
           <div class="vl-pc-id">
-            <div class="vl-pc-kicker"><span class="vl-pc-mode">${icon(m.icon)}${m.name}</span>${status}${mine}</div>
+            <div class="vl-pc-kicker"><span class="vl-pc-mode">${icon(m.icon)}${m.name}</span>${curTag}${status}${mine}</div>
             <h3 class="vl-pc-title" id="${tid}" title="${esc(p.title)}">${esc(p.title)}</h3>
             <div class="vl-pc-org">от <b>${esc(p.organizer)}</b></div>
           </div>
         </div>
-        <dl class="vl-pc-stats">${stat("Банк, VLD", bank)}${stat("Участники", people)}${third}</dl>
+        <dl class="vl-pc-stats">${stat("Банк, " + cur, bank)}${stat("Участники", people)}${third}</dl>
         ${bar == null ? "" : `<div class="vl-pc-bar" aria-hidden="true"><i style="width:${Math.min(100, bar).toFixed(0)}%"></i></div>`}
         <div class="vl-pc-foot">
           <div class="vl-pc-meta">${metas}</div>
@@ -250,7 +301,7 @@
     root.querySelectorAll("[data-bank]").forEach((el) => {
       const id = el.dataset.bank, to = +el.dataset.v, prev = seenBank[id];
       seenBank[id] = to;
-      if (prev === to) return;
+      if (prev === to || el.dataset.cur === "VDT") return; // countUp считает целыми — дробный VDT без анимации
       el.textContent = fmt(prev || 0);
       VLFx.countUp(el, to);
     });
@@ -268,6 +319,7 @@
     else if (f === "new") list.sort((a, b) => b.created_ts - a.created_ts);
     else if (f === "soon") list = list.filter((p) => p.ends_ts).sort((a, b) => a.ends_ts - b.ends_ts);
     else if (MODE_INFO[f]) list = list.filter((p) => p.mode === f);
+    else if (f === "VLD" || f === "VDT") list = list.filter((p) => curOf(p) === f);
     // «Все»: самый активный раунд (больше участников, затем банк) — первой крупной карточкой
     let feat = -1;
     if (f === "all" && list.length) {
@@ -350,6 +402,8 @@
 
   function renderPool(animate) {
     const p = state.pool; if (!p) return;
+    // подписи единиц (<small data-cur-u>) на экране раунда — в валюте этого раунда
+    document.querySelectorAll(`#sc-${MODE_SCREEN[p.mode]} [data-cur-u]`).forEach((el) => { el.textContent = curOf(p); });
     if (p.mode === "wheel") renderWheel(animate);
     else if (p.mode === "vault") renderVault();
     else renderAuction(animate);
@@ -381,10 +435,15 @@
   }
 
   // банк раунда: при открытии — сразу итог, при обновлении (новые ставки) — «докручивается»
-  function setBank(el, v) {
-    if (state.poolFresh) { el.textContent = fmt(v); return; }
+  function setBank(el, v, cur) {
+    if (state.poolFresh || cur === "VDT") { el.textContent = fmtAmt(v, cur); return; }
     VLFx.countUp(el, v);
   }
+  // отменённый раунд: ставки возвращены всем, причина — со стороны сервера (cancel_reason)
+  const cancelSub = (p) => {
+    const r = CANCEL_REASON[p.cancel_reason];
+    return (r ? r[0].toUpperCase() + r.slice(1) + ". " : "") + "Подарок вернулся организатору.";
+  };
 
   function showWinner(box, title, sub) {
     if (title == null) { box.classList.remove("is-on"); return; }
@@ -599,10 +658,12 @@
     mountGift($("w-hub"), p, "vl-wh-hub-pic", false);
     $("det-name").textContent = p.title; $("det-org").textContent = p.organizer;
     setStatus($("det-status"), p);
-    $("det-min").textContent = fmt(p.min_stake);
-    setBank($("det-bank"), p.bank);
+    const cur = curOf(p);
+    $("det-min").textContent = fmtAmt(p.min_stake, cur);
+    setBank($("det-bank"), p.bank, cur);
     $("det-part").textContent = fmt(p.participants);
-    $("det-mine").textContent = fmt(p.my_total);
+    $("det-mine").textContent = fmtAmt(p.my_total, cur);
+    $("det-buy-ic").setAttribute("href", "#" + CUR_ICON[cur]);
     $("det-chance").textContent = fmtPct(p.my_chance);
     $("det-pf").style.width = (live ? Math.min(100, timeBar(p)) : 100) + "%";
     $("det-time-lbl").textContent = live ? "До розыгрыша" : (fin ? "Разыгран" : "Отменён");
@@ -621,7 +682,7 @@
         <span class="vl-stake-av" aria-hidden="true">${avHtml(s.avatar, s.photo)}</span>
         <span class="vl-stake-n">${esc(s.name)}${s.is_me ? YOU : ""}</span>
         <span class="vl-stake-pct num">${fmtPct(s.amount / total * 100)}</span>
-        <b class="vl-stake-v num">${fmt(s.amount)}</b></li>`;
+        <b class="vl-stake-v num">${fmtAmt(s.amount, cur)}</b></li>`;
     }).join("") : `<li class="vl-list-empty">Ставок пока нет — первая ставка займёт всё колесо</li>`;
 
     sizeWheel();
@@ -633,8 +694,8 @@
       showWinner($("det-winner"), p.winner.is_me ? "Ты выиграл подарок" : "Победитель — " + p.winner.name,
         (p.winner.is_me ? "Подарок уже в твоём инвентаре" : "Подарок передан победителю")
         + (ws && total ? ` · его доля была ${fmtPct(ws.amount / total * 100)}` : ""));
-    } else showWinner($("det-winner"), null);
-    if (p.status === "cancelled") toast("Раунд отменён — ставок не было");
+    } else if (p.status === "cancelled") showWinner($("det-winner"), CANCELLED, cancelSub(p));
+    else showWinner($("det-winner"), null);
   }
 
   // перерисовка при изменении размера окна, пересечении 860/861px и смене темы — слушатели ставятся один раз
@@ -673,13 +734,15 @@
     mountGift($("vt-prize"), p, "vl-safe-pic", fin); // после вскрытия анимация играет внутри сейфа
     $("vt-name").textContent = p.title; $("vt-org").textContent = p.organizer;
     setStatus($("vt-status"), p);
-    $("vt-min").textContent = fmt(p.min_stake);
-    setBank($("vt-bank"), p.bank);
+    const cur = curOf(p);
+    $("vt-min").textContent = fmtAmt(p.min_stake, cur);
+    setBank($("vt-bank"), p.bank, cur);
     $("vt-part").textContent = fmt(p.participants);
     $("vt-taken").textContent = `${fmt(p.taken)} / ${fmt(p.vault_max)}`;
     $("vt-hint").innerHTML = live
-      ? `Угадай число от <b class="num">1</b> до <b class="num">${fmt(p.vault_max)}</b>. Попытка стоит <b class="num">${fmt(p.min_stake)}</b> VLD и уходит в банк; угадавший сразу забирает подарок.`
-      : fin ? "Сейф вскрыт. Секретное число и seed раскрыты — результат можно проверить." : "Раунд отменён.";
+      ? `Угадай число от <b class="num">1</b> до <b class="num">${fmt(p.vault_max)}</b>. Попытка стоит <b class="num">${esc(fmtCur(p.min_stake, cur))}</b> и уходит в банк; угадавший сразу забирает подарок.`
+        + (p.ends_ts ? ` Сейф закроется через <b class="num" data-ends="${p.ends_ts}">${hms(p.ends_ts - nowTs())}</b> — если его не вскроют, все попытки вернутся.` : "")
+      : fin ? "Сейф вскрыт. Секретное число и seed раскрыты — результат можно проверить." : `${CANCELLED}. ${cancelSub(p)}`;
     $("vt-num").max = p.vault_max;
     $("vt-form").classList.toggle("hid", !live || p.is_organizer);
     $("vt-cancel").classList.toggle("hid", !(live && p.is_organizer && !p.numbers.length));
@@ -709,7 +772,8 @@
     if (fin && p.winner) {
       showWinner($("vt-winner"), p.winner.is_me ? "Ты вскрыл сейф" : "Сейф вскрыл " + p.winner.name,
         `Секретное число — ${p.secret}. ${p.winner.is_me ? "Подарок уже в твоём инвентаре." : "Подарок передан победителю."}`);
-    } else showWinner($("vt-winner"), null);
+    } else if (p.status === "cancelled") showWinner($("vt-winner"), CANCELLED, cancelSub(p));
+    else showWinner($("vt-winner"), null);
   }
 
   function renderVaultGrid(p, picked, canTry) {
@@ -736,7 +800,7 @@
     const safe = $("vault-safe");
     try {
       const r = await api(`/api/pools/${p.id}/vault`, { number: num });
-      setBalance(r.balance);
+      setBalances(r.balances);
       $("vt-num").value = "";
       if (r.hit) { haptic("ok"); toast("Сейф вскрыт — подарок твой"); VLFx.confetti("jackpot"); }
       else { haptic("error"); toast(`Число ${num} — мимо`); }
@@ -758,13 +822,16 @@
     mountGift($("auc-gift"), p, "vl-rd-pic", true);
     $("auc-name").textContent = p.title; $("auc-org").textContent = p.organizer;
     setStatus($("auc-status"), p);
-    $("auc-min").textContent = fmt(p.min_stake);
+    const cur = curOf(p);
+    $("auc-min").textContent = fmtAmt(p.min_stake, cur);
     // слепой аукцион: пока идёт, банк и чужие ставки не выводятся вовсе
-    $("auc-bank").innerHTML = live || p.bank == null ? HIDDEN : `<span class="num">${fmt(p.bank)}</span><small>VLD</small>`;
+    $("auc-bank").innerHTML = live || p.bank == null ? HIDDEN : amtHtml(p.bank, cur);
     $("auc-part").innerHTML = p.participants == null ? HIDDEN : `<span class="num">${fmt(p.participants)}</span>`;
-    $("auc-mine-val").innerHTML = p.my_total ? `<span class="num">${fmt(p.my_total)}</span><small>VLD</small>`
+    $("auc-mine-val").innerHTML = p.my_total ? amtHtml(p.my_total, cur)
       : `<span class="vl-rd-muted">ещё не ставил</span>`;
-    $("auc-amt").placeholder = `от ${p.min_stake} VLD`; $("auc-amt").min = p.min_stake;
+    $("auc-amt").placeholder = `от ${fmtCur(p.min_stake, cur)}`;
+    $("auc-amt-lbl").textContent = "Сумма ставки, " + cur;
+    amountMode($("auc-amt"), cur);
     $("auc-form").classList.toggle("hid", !live || p.is_organizer);
     $("auc-cancel").classList.toggle("hid", !(live && p.is_organizer && !p.my_total && p.bank === 0));
     $("auc-cd").dataset.ends = live ? p.ends_ts : "";
@@ -778,14 +845,14 @@
       board.innerHTML = `<div class="vl-auc-res">
           <span class="vl-win-ic">${icon("i-leaders")}</span>
           <div class="vl-win-txt"><div class="vl-win-t">${w ? (w.is_me ? "Ты выиграл подарок" : "Победитель — " + esc(w.name)) : "Победителя нет"}</div>
-          <div class="vl-win-s">Банк <b class="num">${fmt(p.bank)}</b> VLD · ставок: <b class="num">${fmt(p.bids.length)}</b></div></div>
+          <div class="vl-win-s">Банк <b class="num">${esc(fmtCur(p.bank, cur))}</b> · ставок: <b class="num">${fmt(p.bids.length)}</b></div></div>
         </div>
         <ol class="vl-bids">${p.bids.map((b, i) => `
           <li class="vl-bid${i === 0 ? " is-top" : ""}${b.is_me ? " is-me" : ""}">
             <span class="vl-bid-r num">${i + 1}</span><span class="vl-bid-n">${esc(b.name)}${b.is_me ? YOU : ""}</span>
-            <b class="vl-bid-v num">${fmt(b.amount)}</b>
+            <b class="vl-bid-v num">${fmtAmt(b.amount, cur)}</b>
           </li>`).join("")}</ol>`;
-    } else board.innerHTML = `<p class="vl-auc-empty">Раунд отменён — ставок не было.</p>`;
+    } else board.innerHTML = `<p class="vl-auc-empty"><b>${CANCELLED}.</b> ${esc(cancelSub(p))}</p>`;
 
     // раскрытие: шторка уезжает вверх, ставки появляются по одной — в момент завершения или при первом
     // просмотре этого завершённого раунда за сессию (дальше открывается сразу открытым)
@@ -807,11 +874,13 @@
 
   async function placeBid() {
     const p = state.pool; if (!p) return;
-    const amt = parseInt($("auc-amt").value, 10);
-    if (!amt || amt < p.min_stake) { toast(`Минимум ${p.min_stake} VLD`); return; }
+    const cur = curOf(p), amt = toUnits($("auc-amt").value, cur);
+    if (isNaN(amt)) { toast(cur === "VDT" ? "Введи сумму в VDT, например 0.5" : "Введи целое число VLD"); return; }
+    if (amt < p.min_stake) { toast(`Минимум ${fmtCur(p.min_stake, cur)}`); return; }
+    if (amt > bal(cur)) { toast(`Недостаточно ${cur} на балансе`); return; }
     try {
       const r = await api(`/api/pools/${p.id}/bid`, { amount: amt });
-      setBalance(r.balance); $("auc-amt").value = "";
+      setBalances(r.balances); $("auc-amt").value = "";
       haptic("ok"); toast("Ставка принята — она скрыта до раскрытия");
       applyPool(r.pool, false);
     } catch (e) { toast(e.message); haptic("error"); }
@@ -820,32 +889,35 @@
   // ---------------------------------------------------------------- ставка в колесе
   function stakeOpen() {
     const p = state.pool; if (!p) return;
-    const bal = state.profile ? state.profile.balance : 0;
+    const cur = curOf(p), have = bal(cur), vdt = cur === "VDT";
     const sl = $("sm-slider");
-    sl.min = p.min_stake; sl.step = p.min_stake >= 25 ? 25 : 5;
-    sl.max = Math.max(p.min_stake, Math.min(bal, 1000));
-    sl.value = Math.min(sl.max, Math.max(p.min_stake, 50));
-    $("sm-min").textContent = p.min_stake; $("sm-bal").textContent = fmt(bal);
-    $("sm-input").value = "";
+    // шкала в единицах валюты раунда (VDT — милли): шаг 5/25 VLD или 0.01/0.1 VDT, потолок 1 000 VLD / 100 VDT
+    sl.min = p.min_stake;
+    sl.step = vdt ? (p.min_stake >= 100 ? 100 : 10) : (p.min_stake >= 25 ? 25 : 5);
+    sl.max = Math.max(p.min_stake, Math.min(have, vdt ? 100000 : 1000));
+    sl.value = Math.min(sl.max, Math.max(p.min_stake, vdt ? 1000 : 50));
+    $("sm-min").textContent = fmtCur(p.min_stake, cur); $("sm-bal").textContent = fmtCur(have, cur);
+    $("sm-unit").textContent = cur; $("sm-ic").setAttribute("href", "#" + CUR_ICON[cur]);
+    $("sm-input").value = ""; amountMode($("sm-input"), cur);
+    $("sm-input").placeholder = vdt ? "Своя сумма, например 0.5" : "Своя сумма";
     stakeSync();
     openOv("stake-modal");
   }
   // one source of truth for what the dialog shows AND what confirm sends: the typed amount while the field is
-  // non-empty (valid only if a whole number within [min, balance]), otherwise the slider value
+  // non-empty (valid only if a number of the round's currency within [min, balance]), otherwise the slider value
   function stakeState() {
-    const p = state.pool, inp = $("sm-input"), raw = inp.value.trim();
-    if (raw === "" && !(inp.validity && inp.validity.badInput)) return { amount: parseInt($("sm-slider").value, 10) || 0, ok: true, hint: "" };
-    const bal = state.profile ? state.profile.balance : 0;
-    const n = /^\d+$/.test(raw) ? parseInt(raw, 10) : NaN;
-    if (isNaN(n)) return { amount: 0, shown: raw || "—", ok: false, hint: "Введите целое число VLD" };
-    if (n < p.min_stake) return { amount: n, ok: false, hint: `Минимум ${p.min_stake} VLD` };
-    if (n > bal) return { amount: n, ok: false, hint: "Недостаточно VLD на балансе" };
+    const p = state.pool, cur = curOf(p), raw = $("sm-input").value.trim();
+    if (raw === "") return { amount: parseInt($("sm-slider").value, 10) || 0, ok: true, hint: "" };
+    const n = toUnits(raw, cur);
+    if (isNaN(n)) return { amount: 0, shown: raw, ok: false, hint: cur === "VDT" ? "Введите сумму в VDT, например 0.5" : "Введите целое число VLD" };
+    if (n < p.min_stake) return { amount: n, ok: false, hint: `Минимум ${fmtCur(p.min_stake, cur)}` };
+    if (n > bal(cur)) return { amount: n, ok: false, hint: `Недостаточно ${cur} на балансе` };
     return { amount: n, ok: true, hint: "" };
   }
   function stakeSync() {
     const p = state.pool; if (!p) return;
     const st = stakeState(), v = st.ok || st.amount ? st.amount : 0;
-    $("m-sv-num").textContent = st.shown || fmt(st.amount);
+    $("m-sv-num").textContent = st.shown || fmtAmt(st.amount, curOf(p));
     $("sm-pcount").textContent = p.participants;
     const bank = (p.bank || 0) + v;
     $("sm-chance").textContent = (bank ? ((p.my_total + v) / bank * 100).toFixed(1) : 0) + "%";
@@ -857,7 +929,7 @@
     const st = stakeState(); if (!st.ok) { stakeSync(); return; }
     try {
       const r = await api(`/api/pools/${p.id}/stake`, { amount: st.amount });
-      setBalance(r.balance); closeOv("stake-modal");
+      setBalances(r.balances); closeOv("stake-modal");
       haptic("ok"); toast("Ставка принята");
       applyPool(r.pool, false);
     } catch (e) { toast(e.message); haptic("error"); }
@@ -867,7 +939,7 @@
     const p = state.pool; if (!p) return;
     try {
       await api(`/api/pools/${p.id}/cancel`, {});
-      toast("Раунд отменён, подарок вернулся в инвентарь");
+      toast("Раунд отменён, подарок вернулся в инвентарь. Сбор за запуск не возвращается");
       tab("home");
     } catch (e) { toast(e.message); }
   }
@@ -908,7 +980,7 @@
     const a = Math.abs(n) % 100, b = a % 10;
     return f[a > 10 && a < 20 ? 2 : b === 1 ? 0 : b >= 2 && b <= 4 ? 1 : 2];
   };
-  const vld = (n) => `<span class="num">${fmt(n)}</span><small>VLD</small>`;
+  const vld = (n) => amtHtml(n, "VLD"); // рейтинг считается по обороту в VLD-раундах
 
   function switchLB(period) {
     state.lb = period;
@@ -966,7 +1038,7 @@
             <span class="vl-wf-t" title="${esc(w.title)}">${esc(w.title)}</span>
             <span class="vl-wf-s"><b>${esc(w.winner)}</b> · ${ago(w.ts)}</span>
           </span>
-          <span class="vl-wf-bank">${vld(w.bank)}</span>
+          <span class="vl-wf-bank">${amtHtml(w.bank, curOf(w))}</span>
         </button></li>`).join("")
         : `<li class="vl-ev-empty">${emptyState("i-clock", "Победителей пока нет")}</li>`;
       VLFx.stagger($("lb-podium")); VLFx.stagger($("lb-list")); VLFx.stagger($("winners-list"));
@@ -978,8 +1050,6 @@
   // Шаги 1–3 слева; шаг 4 (#cr-sum… — сводка и кнопка) на десктопе липкий справа, на телефоне — последним блоком.
   const giftArt = (g) => ({ image: g.image, title: g.name });
   const timeLbl = (min) => (min < 60 ? `${min} мин` : `${min / 60} ч`);
-  const chipHtml = (v, label, on) =>
-    `<button type="button" class="vl-chip${on ? " is-on" : ""}" data-v="${v}" aria-pressed="${on}">${label}</button>`;
 
   async function loadGifts() {
     try { state.gifts = (await api("/api/inventory/gifts")).gifts; } catch (e) { state.gifts = []; }
@@ -987,11 +1057,25 @@
   }
 
   async function loadCreate() {
-    await loadGifts();
+    await Promise.all([loadGifts(), loadChannelList()]);
     const held = state.gifts.filter((g) => g.status === "held");
     if (!held.find((g) => g.id === state.create.gift)) state.create.gift = held.length ? held[0].id : null;
     renderCreateGifts();
+    renderCreateChannels();
     renderCreateMode();
+  }
+  async function loadChannelList() {
+    try { state.channels = await api("/api/channels"); } catch (e) { state.channels = { items: [], pending: [] }; }
+    return state.channels;
+  }
+  // «Опубликовать в канале» — только если у игрока есть привязанные каналы, где бот сейчас админ
+  function renderCreateChannels() {
+    const sel = $("cr-channel"), keep = sel.value;
+    const list = (state.channels.items || []).filter((c) => c.active);
+    $("cr-ch-box").classList.toggle("hid", !list.length);
+    sel.innerHTML = `<option value="">Не публиковать</option>` + list.map((c) =>
+      `<option value="${+c.id}">${esc(c.title || (c.username ? "@" + c.username : "Канал " + c.chat_id))}</option>`).join("");
+    if (list.some((c) => String(c.id) === keep)) sel.value = keep;
   }
 
   function renderCreateGifts() {
@@ -1024,26 +1108,57 @@
     }).join("");
   }
 
+  // Ставка/цена попытки — поле ввода в валюте раунда (VDT — десятичное, отправляется в милли); фишки — быстрый выбор.
+  // При смене режима или валюты в поле подставляется первая фишка.
   function renderCreateMode() {
-    const m = state.create.mode;
+    const m = state.create.mode, cur = state.create.cur;
     document.querySelectorAll("#cr-modes [data-cmode]").forEach((b) => {
       const on = b.dataset.cmode === m;
       b.classList.toggle("is-on", on); b.setAttribute("aria-pressed", String(on));
     });
+    document.querySelectorAll("#cr-cur [data-ccur]").forEach((b) => {
+      const on = b.dataset.ccur === cur;
+      b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on));
+    });
     $("cr-mode-hint").textContent = MODE_HINT[m];
-    $("cr-stake-lbl").textContent = m === "vault" ? "Ставка за попытку" : "Минимальная ставка";
-    $("cr-stakes").innerHTML = STAKE_CHIPS[m].map((v, i) => chipHtml(v, `<span class="num">${v}</span> VLD`, i === 0)).join("");
+    $("cr-stake-lbl").textContent = m === "vault" ? "Цена попытки" : "Минимальная ставка";
+    const chips = STAKE_CHIPS[cur][m];
+    $("cr-stakes").innerHTML = chips.map((v) =>
+      `<button type="button" class="vl-chip" data-v="${v}" data-in="${toInput(v, cur)}" aria-pressed="false"><span class="num">${fmtAmt(v, cur)}</span> ${cur}</button>`).join("");
+    $("cr-stake").value = toInput(chips[0], cur);
+    $("cr-stake-u").textContent = cur;
+    amountMode($("cr-stake"), cur);
     $("cr-vault-box").classList.toggle("hid", m !== "vault");
     $("cr-time-box").classList.toggle("hid", m === "vault");
+    crStakeSync();
+  }
+  // поле суммы → подсветка совпадающей фишки + сводка
+  function crStakeSync() {
+    const v = toUnits($("cr-stake").value, state.create.cur);
+    $("cr-stakes").querySelectorAll(".vl-chip").forEach((c) => {
+      const on = +c.dataset.v === v;
+      c.classList.toggle("is-on", on); c.setAttribute("aria-pressed", String(on));
+    });
     renderCreateSummary();
   }
+  // {amount, ok, hint}: сумма из поля в единицах валюты и её проверка по пределам сервера
+  function crStake() {
+    const cur = state.create.cur, [lo, hi] = STAKE_RANGE[cur], v = toUnits($("cr-stake").value, cur);
+    const range = `от ${fmtAmt(lo, cur)} до ${fmtCur(hi, cur)}`;
+    if (isNaN(v)) return { amount: 0, ok: false, hint: (cur === "VDT" ? "Введи сумму в VDT, например 0.5 — " : "Введи целое число VLD — ") + range };
+    if (v < lo || v > hi) return { amount: v, ok: false, hint: "Сумма " + range };
+    return { amount: v, ok: true, hint: "" };
+  }
   const chipVal = (id) => { const c = document.querySelector(`#${id} .vl-chip.is-on`); return c ? +c.dataset.v : null; };
+  const pctTxt = (v) => String(+v.toFixed(2)); // 95.5, без «95,50»
 
   let sumGiftKey = null; // картинка в сводке пересобирается только при смене подарка
   function renderCreateSummary() {
-    const m = state.create.mode, info = MODE_INFO[m];
+    const m = state.create.mode, cur = state.create.cur, info = MODE_INFO[m];
     const g = state.gifts.find((x) => x.id === state.create.gift && x.status === "held");
-    const pct = Number(VL.commission) || 0, stake = chipVal("cr-stakes") || 0;
+    const L = state.profile && state.profile.limits;
+    const pct = L ? L.commission * 100 : (Number(VL.commission) || 0), you = 100 - pct;
+    const fee = L ? L.create_fee_vdt : 100, st = crStake();
     const key = g ? `${g.id}|${g.image || ""}` : "";
     if (key !== sumGiftKey) {
       sumGiftKey = key;
@@ -1053,30 +1168,48 @@
       $("cr-sum-name").title = g ? g.name : "";
     }
     $("cr-sum-mode").innerHTML = icon(info.icon) + info.name;
+    const term = m === "vault" ? "до 6 ч" : timeLbl(chipVal("cr-times") || 15);
+    const chSel = $("cr-channel"), ch = chSel.value && !$("cr-ch-box").classList.contains("hid")
+      ? chSel.options[chSel.selectedIndex].text : "";
     const row = (l, v) => `<div class="vl-cr-row"><dt>${l}</dt><dd>${v}</dd></div>`;
     $("cr-sum-rows").innerHTML =
-      row(m === "vault" ? "Попытка" : "Мин. ставка", vld(stake))
-      + (m === "vault" ? row("Сейф", `<span class="num">${chipVal("cr-vault-sizes") || 0}</span> чисел · без срока`)
-        : row(m === "auction" ? "Раскрытие" : "Розыгрыш", `через <span class="num">${timeLbl(chipVal("cr-times") || 0)}</span>`))
-      + row("Создание", "бесплатно")
-      + row("Комиссия платформы", `<span class="num">${pct}%</span> банка`)
-      + `<div class="vl-cr-row vl-cr-row-you"><dt>Ты получишь</dt><dd><span class="num">${100 - pct}%</span> банка</dd></div>`;
-    $("cr-sum-ex").innerHTML = `Например, при банке <span class="num">1 000</span> VLD тебе придёт
-      <span class="num">${fmt(Math.floor(1000 * (100 - pct) / 100))}</span> VLD сразу после завершения.`;
-    $("cr-go").disabled = !g;
+      row("Валюта", `${icon(CUR_ICON[cur], "ic-sm")} ${cur === "VDT" ? "VDT • TON" : "VLD • Stars"}`)
+      + row(m === "vault" ? "Цена попытки" : "Мин. ставка", st.ok ? amtHtml(st.amount, cur) : "—")
+      + (m === "vault" ? row("Сейф", `<span class="num">${chipVal("cr-vault-sizes") || 0}</span> чисел · до <span class="num">6 ч</span>`)
+        : row(m === "auction" ? "Раскрытие" : "Розыгрыш", `через <span class="num">${term}</span>`))
+      + row("Запуск", amtHtml(fee, "VDT"))
+      + (ch ? row("Канал", esc(ch)) : "")
+      + row("Комиссия платформы", `<span class="num">${pctTxt(pct)}%</span> банка`)
+      + `<div class="vl-cr-row vl-cr-row-you"><dt>Ты получишь</dt><dd><span class="num">${pctTxt(you)}%</span> банка</dd></div>`;
+    $("cr-sum-line").textContent = `Запуск: ${fmtCur(fee, "VDT")} · Вам: ${pctTxt(you)}% банка · Срок: ${term}`;
+    const ex = cur === "VDT" ? 10000 : 1000; // пример: 10 VDT или 1 000 VLD
+    $("cr-sum-ex").innerHTML = `Например, при банке <span class="num">${fmtAmt(ex, cur)}</span> ${cur} тебе придёт
+      <span class="num">${fmtAmt(ex - Math.floor(ex * Math.round(pct * 10) / 1000), cur)}</span> ${cur} сразу после завершения.`;
+    $("cr-stake-hint").textContent = st.hint;
+    $("cr-stake").setAttribute("aria-invalid", String(!st.ok));
+    // запуск стоит 0.1 VDT при любой валюте раунда: не хватает — кнопка выключена, рядом подсказка пополнить TON
+    const noFee = !!state.profile && bal("VDT") < fee;
+    $("cr-need").classList.toggle("hid", !noFee);
+    $("cr-go").disabled = !g || !st.ok || noFee;
   }
 
   async function createPool() {
     if (!state.create.gift) { toast("Сначала передай подарок боту-хранителю"); return; }
-    const body = { mode: state.create.mode, gift_id: state.create.gift, min_stake: chipVal("cr-stakes") };
+    const st = crStake();
+    if (!st.ok) { toast(st.hint); return; }
+    const body = { mode: state.create.mode, gift_id: state.create.gift, currency: state.create.cur, min_stake: st.amount };
     if (body.mode === "vault") body.vault_max = chipVal("cr-vault-sizes");
     else body.duration_min = chipVal("cr-times");
+    if ($("cr-channel").value && !$("cr-ch-box").classList.contains("hid")) body.channel_id = +$("cr-channel").value;
+    const btn = $("cr-go");
+    btn.disabled = true;
     try {
       const p = await api("/api/pools", body);
-      haptic("ok"); toast("Раунд создан");
+      haptic("ok"); toast(body.channel_id ? "Раунд создан и опубликован в канале" : "Раунд создан");
       state.create.gift = null;
+      loadProfile(false); // списан сбор за запуск — обновим балансы
       openPool(p.id);
-    } catch (e) { toast(e.message); haptic("error"); }
+    } catch (e) { toast(e.message); haptic("error"); renderCreateSummary(); }
   }
 
   async function giftDeposit() {
@@ -1104,11 +1237,11 @@
   async function loadProfile(full) {
     try { state.profile = await api("/api/profile"); } catch (e) { toast(e.message); return; }
     const p = state.profile;
-    setBalance(p.balance);
+    setBalances(p.balances || { VLD: p.balance, VDT: 0 });
     $("pf-av").innerHTML = avHtml(p.avatar, p.photo); $("pf-name").textContent = p.name; $("pf-name").title = p.name;
     $("pf-handle").textContent = p.username ? "@" + p.username : "ID " + p.telegram_id;
     $("pf-won").textContent = fmt(p.stats.nft_won); $("pf-part").textContent = fmt(p.stats.participations);
-    $("pf-wd").textContent = fmt(p.stats.withdrawn);
+    $("pf-org").textContent = fmt(p.stats.organized); // «выведено» на сервере складывает VLD и милли-VDT — не показываем
     $("streak-count").textContent = fmt(p.streak);
     $("streak-info").textContent = p.streak_today
       ? "Сегодня серия продлена — возвращайся завтра"
@@ -1127,6 +1260,7 @@
       if (isDesk() && state.pt === "inv") switchPT("tx");
       else if (state.pt === "tx") loadTx();       // открытая вкладка списков — свежие данные при каждом входе
       else if (state.pt === "wd") loadPayouts();
+      else if (state.pt === "ch") loadChannels();
       await loadGifts(); renderInventory();
     }
   }
@@ -1150,7 +1284,7 @@
       // комиссия видна только там, где её правда спишут: свободный подарок и комиссия > 0
       const label = g.status === "withdraw_requested" ? `${icon("i-clock")}<span>Заявка отправлена</span>`
         : `${icon("i-out")}<span>Вывести</span>${held && fee > 0
-          ? `<span class="vl-inv-fee"><span class="num">${fmt(fee)}</span> VLD</span>` : ""}`;
+          ? `<span class="vl-inv-fee"><span class="num">${fmt(fee)}</span> VLD</span>` : ""}`; // плата Telegram — всегда в VLD
       return `<li class="card vl-inv-tile">
         <span class="vl-inv-pic">${giftImg(giftArt(g), "vl-inv-img")}</span>
         <span class="vl-inv-n" title="${esc(g.name)}">${esc(g.name)}</span>
@@ -1165,7 +1299,7 @@
 
   const TX_IC = { stake: "i-wheel", vault: "i-lock", bid: "i-eye-off", organizer_payout: "i-wallet", referral: "i-profile",
     transfer_out: "i-send", transfer_in: "i-wallet", payout: "i-out", payout_refund: "i-back", deposit: "i-star",
-    gift_fee: "i-rounds", gift_fee_refund: "i-back" };
+    gift_fee: "i-rounds", gift_fee_refund: "i-back", refund: "i-back", create_fee: "i-create", bonus: "i-star" };
   const listEmpty = (ic, text, action) => `<div class="vl-pf-listempty">${emptyState(ic, text, action)}</div>`;
 
   async function loadTx() {
@@ -1176,7 +1310,7 @@
         <li class="vl-tx">
           <span class="vl-tx-ic${t.amount >= 0 ? " is-pos" : ""}">${icon(TX_IC[t.kind] || "i-wallet")}</span>
           <span class="vl-tx-id"><span class="vl-tx-n">${esc(t.title)}</span><span class="vl-tx-s">${ago(t.ts)}</span></span>
-          <span class="vl-tx-v num ${t.amount >= 0 ? "is-pos" : "is-neg"}">${t.amount >= 0 ? "+" : "−"}${fmt(Math.abs(t.amount))}</span>
+          <span class="vl-tx-v num ${t.amount >= 0 ? "is-pos" : "is-neg"}">${t.amount >= 0 ? "+" : "−"}${fmtAmt(Math.abs(t.amount), curOf(t))}<small class="vl-tx-u vl-cur-${curOf(t).toLowerCase()}">${curOf(t)}</small></span>
         </li>`).join("")}</ul>` : listEmpty("i-wallet", "Операций пока нет");
       VLFx.stagger(box.querySelector(".vl-txl"));
     } catch (e) { box.innerHTML = listEmpty("i-close", esc(e.message)); }
@@ -1197,16 +1331,19 @@
     const btn = `<button type="button" class="vl-btn vl-btn-primary vl-btn-sm" data-act="payout-open">${icon("i-out")}Запросить вывод</button>`;
     try {
       const { items } = await api("/api/payouts");
-      box.innerHTML = items.length ? `<ul class="card vl-txl">${items.map((r) => `
-        <li class="vl-tx">
-          <span class="vl-tx-ic">${icon(r.method === "TON" ? "i-ton" : "i-star")}</span>
+      // VLD выводится в Stars (1 VLD = 1 ⭐), VDT — в TON (1 VDT = 1 TON); net — в единицах валюты заявки
+      box.innerHTML = items.length ? `<ul class="card vl-txl">${items.map((r) => {
+        const cur = curOf(r);
+        return `<li class="vl-tx">
+          <span class="vl-tx-ic">${icon(CUR_ICON[cur])}</span>
           <span class="vl-tx-id">
             <span class="vl-tx-n num">${esc(r.destination.length > 20 ? shortAddr(r.destination) : r.destination)}</span>
             <span class="vl-tx-s">${statusPill(PO_STATUS[r.status])} ${ago(r.ts)}</span>
           </span>
-          <span class="vl-tx-r"><span class="vl-tx-v num">${r.method === "TON" ? r.net_ton.toFixed(2) + " TON" : fmt(r.net) + " Stars"}</span>
-            <span class="vl-tx-s">списано <span class="num">${fmt(r.amount)}</span> VLD</span></span>
-        </li>`).join("")}</ul><div class="vl-pf-more">${btn}</div>` : listEmpty("i-out", "Заявок на вывод нет", btn);
+          <span class="vl-tx-r"><span class="vl-tx-v num">${cur === "VDT" ? fmtAmt(r.net, "VDT") + " TON" : fmt(r.net) + " Stars"}</span>
+            <span class="vl-tx-s">списано <span class="num">${esc(fmtCur(r.amount, cur))}</span></span></span>
+        </li>`;
+      }).join("")}</ul><div class="vl-pf-more">${btn}</div>` : listEmpty("i-out", "Заявок на вывод нет", btn);
       VLFx.stagger(box.querySelector(".vl-txl"));
     } catch (e) { box.innerHTML = listEmpty("i-close", esc(e.message)); }
   }
@@ -1217,7 +1354,38 @@
     document.querySelectorAll("#sc-profile .vl-pf-panel").forEach((c) => c.classList.toggle("on", c.id === "ptc-" + t));
     if (t === "tx") loadTx();
     if (t === "wd") loadPayouts();
+    if (t === "ch") loadChannels();
     if (t === "inv") loadGifts().then(renderInventory);
+  }
+
+  // ---------------------------------------------------------------- каналы
+  // items — мои привязанные каналы; pending — каналы, куда я добавил бота, но ещё не привязал (бот там админ).
+  // Привязка: POST /api/channels/link {chat_id} — сервер сам спрашивает у Telegram, админ ли я в этом канале.
+  const chName = (c) => c.title || (c.username ? "@" + c.username : "Канал " + c.chat_id);
+  async function loadChannels() {
+    const box = $("ch-list");
+    try { await loadChannelList(); } catch (e) { box.innerHTML = listEmpty("i-close", esc(e.message)); return; }
+    const { items = [], pending = [] } = state.channels;
+    const row = (c, action) => `<li class="vl-tx vl-ch">
+        <span class="vl-tx-ic">${icon("i-send")}</span>
+        <span class="vl-tx-id"><span class="vl-tx-n">${esc(chName(c))}</span>
+          <span class="vl-tx-s">${c.username ? "@" + esc(c.username) + " · " : ""}${action ? "бот — администратор" : c.active
+            ? statusPill(["бот публикует", "i-check", "ok"]) : statusPill(["бот удалён из админов", "i-close", "bad"])}</span></span>
+        ${action || ""}</li>`;
+    box.innerHTML = (items.length ? `<h3 class="vl-ch-h">Привязанные каналы</h3><ul class="card vl-txl">${items.map((c) => row(c)).join("")}</ul>` : "")
+      + (pending.length ? `<h3 class="vl-ch-h">Бот уже админ — осталось привязать</h3><ul class="card vl-txl">${pending.map((c) => row(c,
+        `<button type="button" class="vl-btn vl-btn-primary vl-btn-sm" data-ch-link="${esc(String(c.chat_id))}">Привязать</button>`)).join("")}</ul>` : "")
+      || listEmpty("i-send", "Привязанных каналов пока нет");
+  }
+  async function channelLink(chatId) {
+    const id = String(chatId || "").trim();
+    if (!/^-?\d{5,20}$/.test(id)) { toast("Введи числовой ID канала, например -1001234567890"); return; }
+    try {
+      const r = await api("/api/channels/link", { chat_id: id });
+      haptic("ok"); toast(`Канал «${chName(r.channel)}» привязан`);
+      $("ch-chat-id").value = "";
+      loadChannels();
+    } catch (e) { toast(e.message); haptic("error"); }
   }
   // на десктопе инвентарь всегда слева: если открыта вкладка «Инвентарь», справа показываем транзакции.
   // Там же #ptc-inv перестаёт быть tabpanel (его вкладка скрыта) и подписан своим видимым заголовком;
@@ -1286,19 +1454,21 @@
   // ---------------------------------------------------------------- пополнение
   let tuMode = "stars", tonDep = null, tonPoll = 0;
 
-  function topupOpen() {
+  // Stars пополняют только VLD (1 ⭐ = 1 VLD), TON — только VDT (1 TON = 1 VDT); mode — открытая вкладка
+  function topupOpen(mode) {
+    if (!state.profile) return;
     const R = state.profile.rates;
     $("tu-note").textContent = VL.demo ? "Демо-режим: VLD зачисляются сразу и ничего не стоят" : "Оплата через Telegram Stars";
-    $("tu-rate").textContent = `Курс: 100 Stars → ${Math.floor(100 * R.stars_to_vld)} VLD · включает комиссию платформы`;
+    $("tu-rate").textContent = `1 ⭐ = ${R.stars_to_vld} VLD · без комиссии`;
     $("tu-amount").value = "";
     document.querySelectorAll("#tu-presets .vl-dlg-preset").forEach((c) => {
       c.classList.remove("is-on"); c.setAttribute("aria-pressed", "false");
-      c.querySelector(".vl-dlg-preset-vld").textContent = Math.floor(+c.dataset.v * R.stars_to_vld) + " VLD";
+      c.querySelector(".vl-dlg-preset-vld").textContent = fmt(+c.dataset.v * R.stars_to_vld) + " VLD";
     });
-    $("tt-note").textContent = `Минимум ${R.ton_min} TON · 1 TON = ${R.vld_per_ton} VLD`;
+    $("tt-note").textContent = `1 TON = ${R.ton_to_vdt} VDT · минимум ${R.ton_min} TON · без комиссии`;
     $("tt-slider").min = R.ton_min; $("tt-slider").value = Math.max(1, R.ton_min); $("tt-amount").value = "";
     tonReset(); starsCalc(); tonCalc();
-    topupMode("stars");
+    topupMode(mode === "ton" ? "ton" : "stars");
     openOv("topup-modal");
   }
   function topupMode(m) {
@@ -1326,8 +1496,8 @@
         else window.open(r.invoice_link, "_blank");
         return;
       }
-      setBalance(r.balance); closeOv("topup-modal"); haptic("ok");
-      toast(`Баланс пополнен на ${fmt(r.credited)} VLD`);
+      setVld(r.balance); closeOv("topup-modal"); haptic("ok"); // демо-ответ несёт только VLD
+      toast(`Баланс пополнен на ${fmtCur(r.credited, "VLD")}`);
     } catch (e) { toast(e.message); }
   }
 
@@ -1336,7 +1506,8 @@
   function tonCalc() {
     const v = tonAmount();
     $("tt-val").textContent = v; $("tt-eq-ton").textContent = v;
-    $("tt-eq-vld").textContent = fmt(Math.floor(v * state.profile.rates.vld_per_ton));
+    // зачисляется по факту: милли-VDT = nanoTON // 10⁶ (как nano_to_vdt на сервере)
+    $("tt-eq-vdt").textContent = fmtAmt(Math.floor(Math.round(v * 1e9) / 1e6) * state.profile.rates.ton_to_vdt, "VDT");
   }
   // the waiting spinner runs only while we poll; after the 5-minute give-up it is hidden (the status text stays)
   const tonSpin = (on) => document.querySelector("#tt-wait .vl-dlg-progress").classList.toggle("is-idle", !on);
@@ -1351,7 +1522,7 @@
     try { tonDep = await api("/api/wallet/ton/intent", { amount_ton: amount }); }
     catch (e) { toast(e.message); return; }
     $("tt-form").classList.add("hid"); $("tt-wait").classList.remove("hid"); tonSpin(true);
-    $("tt-w-amount").textContent = `${amount} TON → ${fmt(tonDep.will_credit)} VLD`;
+    $("tt-w-amount").textContent = `${amount} TON → ${fmtCur(tonDep.will_credit, "VDT")}`;
     $("tt-w-addr").textContent = tonDep.address; $("tt-w-comment").textContent = tonDep.comment;
     $("tt-status").textContent = tonDep.demo ? "Демо: настоящий перевод не нужен" : "Ждём перевод в блокчейне…";
     $("tt-demo").classList.toggle("hid", !tonDep.demo);
@@ -1373,8 +1544,8 @@
     }, 5000);
   }
   function tonCredited(r) {
-    setBalance(r.balance); haptic("ok");
-    toast(`TON получен · +${fmt(r.credited)} VLD`);
+    setBalances(r.balances); haptic("ok");
+    toast(`TON получен · +${fmtCur(r.credited, "VDT")}`);
     tonReset(); closeOv("topup-modal");
   }
   async function tonOpenWallet() {
@@ -1409,89 +1580,137 @@
   }
 
   // ---------------------------------------------------------------- перевод
-  let lookupTimer = 0, recipientOk = false;
+  // Получатель — @username (поиск без учёта регистра, с превью имени и фото). Валюта одна с обеих сторон:
+  // VLD → VLD, VDT → VDT; сумма вводится в валюте (VDT — десятичная), уходит в единицах сервера (милли).
+  let lookupTimer = 0, recipient = null, trCur = "VLD";
+  const USERNAME_RE = /^@?[A-Za-z0-9_]{3,32}$/;
   function transferOpen() {
-    $("tr-recipient").value = ""; $("tr-amount").value = ""; recipientOk = false;
+    if (!state.profile) return;
+    $("tr-recipient").value = ""; $("tr-amount").value = ""; recipient = null;
     $("tr-recip-status").innerHTML = "&nbsp;"; $("tr-recip-status").className = "vl-dlg-recip";
-    const L = state.profile.limits;
-    $("tr-fee-label").textContent = `Комиссия перевода (${L.transfer_fee * 100}%)`;
-    transferCalc(); openOv("transfer-modal");
+    $("tr-fee-label").textContent = `Комиссия перевода (${pctTxt(state.profile.limits.transfer_fee * 100)}%)`;
+    transferCur(trCur); openOv("transfer-modal");
+  }
+  function transferCur(cur) {
+    trCur = cur;
+    document.querySelectorAll("#tr-cur [data-trc]").forEach((b) => {
+      b.classList.toggle("on", b.dataset.trc === cur); b.setAttribute("aria-pressed", String(b.dataset.trc === cur));
+    });
+    const min = state.profile.limits[cur === "VDT" ? "transfer_min_vdt" : "transfer_min_vld"];
+    $("tr-amt-lbl").textContent = `Сумма, ${cur} · от ${fmtCur(min, cur)}`;
+    $("tr-amount").placeholder = toInput(min, cur);
+    amountMode($("tr-amount"), cur);
+    transferCalc();
   }
   function transferCalc() {
-    const L = state.profile.limits, amt = parseInt($("tr-amount").value, 10) || 0;
-    const fee = Math.floor(amt * L.transfer_fee);
-    $("tr-calc-gross").textContent = fmt(amt); $("tr-calc-fee").textContent = "−" + fmt(fee);
-    $("tr-calc-net").textContent = fmt(amt - fee);
-    const w = $("tr-warn");
+    const L = state.profile.limits, cur = trCur, raw = $("tr-amount").value.trim();
+    const min = L[cur === "VDT" ? "transfer_min_vdt" : "transfer_min_vld"];
+    const amt = raw ? toUnits(raw, cur) : 0, n = isNaN(amt) ? 0 : amt, fee = feeOf(n, L.transfer_fee);
+    $("tr-calc-gross").textContent = fmtCur(n, cur); $("tr-calc-fee").textContent = "−" + fmtCur(fee, cur);
+    $("tr-calc-net").textContent = fmtCur(n - fee, cur);
     let msg = "";
-    if (amt && amt < L.transfer_min) msg = `Минимальная сумма перевода — ${L.transfer_min} VLD`;
-    else if (amt > state.profile.balance) msg = "Недостаточно VLD на балансе";
-    setAlert(w, msg);
-    $("tr-submit-btn").disabled = !(recipientOk && amt >= L.transfer_min && amt <= state.profile.balance);
+    if (raw && isNaN(amt)) msg = cur === "VDT" ? "Введи сумму в VDT, например 1.5" : "Введи целое число VLD";
+    else if (n && n < min) msg = `Минимальная сумма перевода — ${fmtCur(min, cur)}`;
+    else if (n > bal(cur)) msg = `Недостаточно ${cur} на балансе`;
+    setAlert($("tr-warn"), msg);
+    $("tr-submit-btn").disabled = !(recipient && !msg && n >= min);
   }
   function transferLookup() {
-    clearTimeout(lookupTimer); recipientOk = false; transferCalc();
-    const st = $("tr-recip-status"), id = $("tr-recipient").value.trim();
+    clearTimeout(lookupTimer); recipient = null; transferCalc();
+    const st = $("tr-recip-status"), name = $("tr-recipient").value.trim();
     st.className = "vl-dlg-recip";
-    if (!/^\d{3,}$/.test(id)) { st.innerHTML = "&nbsp;"; return; }
+    if (!name) { st.innerHTML = "&nbsp;"; return; }
+    if (!USERNAME_RE.test(name)) {
+      st.textContent = name.replace(/^@/, "").length < 3 ? " " : "Латиница, цифры и _, от 3 до 32 символов";
+      return;
+    }
     st.textContent = "Ищем…";
     lookupTimer = setTimeout(async () => {
       try {
-        const u = await api("/api/users/lookup?telegram_id=" + id);
-        if ($("tr-recipient").value.trim() !== id) return;
-        st.innerHTML = icon("i-check"); st.append(" " + u.name); st.classList.add("ok"); recipientOk = true; // the name goes in as text
+        const u = await api("/api/users/lookup?username=" + encodeURIComponent(name.replace(/^@/, "")));
+        if ($("tr-recipient").value.trim() !== name) return;
+        if (state.profile && u.telegram_id === state.profile.telegram_id) {
+          st.textContent = "Это ты — перевести самому себе нельзя"; st.classList.add("err");
+        } else {
+          // превью: фото (или первая буква) + имя + @username; имя вставляется как текст
+          st.innerHTML = `<span class="vl-recip-av" aria-hidden="true">${u.photo ? avHtml("👤", u.photo) : icon("i-profile")}</span><b class="vl-recip-n"></b><span class="vl-recip-u"></span>`;
+          st.querySelector(".vl-recip-n").textContent = u.name;
+          st.querySelector(".vl-recip-u").textContent = u.username ? "@" + u.username : "";
+          st.classList.add("ok", "has-av"); recipient = u;
+        }
       } catch (e) { st.textContent = e.message; st.classList.add("err"); }
       transferCalc();
     }, 350);
   }
   async function transferConfirm() {
+    const amount = toUnits($("tr-amount").value, trCur);
+    if (!recipient || isNaN(amount)) return;
+    const btn = $("tr-submit-btn"); btn.disabled = true;
     try {
-      const r = await api("/api/transfer", { to_telegram_id: $("tr-recipient").value.trim(), amount: parseInt($("tr-amount").value, 10) });
-      setBalance(r.balance); closeOv("transfer-modal"); haptic("ok");
-      toast(`Переведено: получатель зачислит ${fmt(r.received)} VLD`);
-    } catch (e) { toast(e.message); haptic("error"); }
+      const r = await api("/api/transfer", { to_username: $("tr-recipient").value.trim().replace(/^@/, ""), amount, currency: trCur });
+      setBalances(r.balances); closeOv("transfer-modal"); haptic("ok");
+      toast(`Переведено: получатель зачислит ${fmtCur(r.received, r.currency)}`);
+      if (state.pt === "tx" && $("sc-profile").classList.contains("on")) loadTx();
+    } catch (e) { toast(e.message); haptic("error"); transferCalc(); }
   }
 
   // ---------------------------------------------------------------- вывод
-  let poMethod = "TON";
+  // VLD выводится в Telegram Stars, VDT — в TON; минимумы и комиссии — из profile.limits (как на сервере).
+  let poCur = "VLD";
   const TON_RE = /^(?:[EUk0]Q[A-Za-z0-9_-]{46}|-?\d:[0-9a-fA-F]{64})$/;
+  const poLimits = (cur) => {
+    const L = state.profile.limits, v = cur === "VDT";
+    return { min: v ? L.payout_min_vdt : L.payout_min_vld, fee: v ? L.payout_fee_vdt : L.payout_fee_vld };
+  };
 
   function payoutOpen() {
+    if (!state.profile) return;
     $("po-amount").value = "";
-    payoutMode(poMethod);
+    $("po-note").textContent = VL.demo
+      ? "Демо-режим: вывод отключён — VLD, VDT и подарки не настоящие."
+      : "Автовыплаты отключены — заявку обрабатывает администратор. При отказе сумма возвращается полностью.";
+    payoutMode(poCur);
     openOv("payout-modal");
   }
-  function payoutMode(m) {
-    poMethod = m;
-    const L = state.profile.limits, ton = m === "TON";
+  function payoutMode(cur) {
+    poCur = cur === "VDT" ? "VDT" : "VLD";
+    const ton = poCur === "VDT", P = poLimits(poCur);
     document.querySelectorAll("#po-tabs .vl-seg-btn").forEach((b) => {
-      b.classList.toggle("on", b.dataset.pom === m); b.setAttribute("aria-pressed", String(b.dataset.pom === m));
+      b.classList.toggle("on", b.dataset.pom === poCur); b.setAttribute("aria-pressed", String(b.dataset.pom === poCur));
     });
-    $("po-dest-label").textContent = ton ? "Адрес TON-кошелька (EQ… / UQ…)" : "Telegram @username для получения";
+    $("po-dest-label").textContent = ton ? "Адрес TON-кошелька (EQ… / UQ…)" : "Telegram @username для получения Stars";
     $("po-destination").placeholder = ton ? "UQAbc123…" : "@username";
     $("po-destination").value = ton ? (tonAddr || "") : (state.profile.username ? "@" + state.profile.username : "");
-    $("po-fee-label").textContent = `Комиссия вывода (${(ton ? L.payout_fee_ton : L.payout_fee) * 100}%)`;
+    $("po-amt-lbl").textContent = `Сумма к списанию, ${poCur} · доступно ${fmtCur(bal(poCur), poCur)}`;
+    $("po-amount").placeholder = toInput(P.min, poCur);
+    amountMode($("po-amount"), poCur);
+    $("po-calc-min").textContent = fmtCur(P.min, poCur);
+    $("po-fee-label").textContent = `Комиссия вывода (${pctTxt(P.fee * 100)}%)`;
     payoutCalc();
   }
   function payoutCalc() {
-    const L = state.profile.limits, R = state.profile.rates, ton = poMethod === "TON";
-    const amt = parseInt($("po-amount").value, 10) || 0;
-    const fee = Math.floor(amt * (ton ? L.payout_fee_ton : L.payout_fee)), net = amt - fee;
-    $("po-calc-fee").textContent = "−" + fmt(fee) + " VLD";
-    $("po-calc-net").textContent = ton ? (net / R.vld_per_ton).toFixed(2) + " TON" : fmt(net) + " Stars";
+    const ton = poCur === "VDT", P = poLimits(poCur), raw = $("po-amount").value.trim();
+    const amt = raw ? toUnits(raw, poCur) : 0, n = isNaN(amt) ? 0 : amt;
+    const fee = feeOf(n, P.fee), net = n - fee;
+    $("po-calc-fee").textContent = "−" + fmtCur(fee, poCur);
+    $("po-calc-net").textContent = ton ? fmtAmt(net, "VDT") + " TON" : fmt(net) + " Stars";
     const dest = $("po-destination").value.trim();
     const destOk = ton ? TON_RE.test(dest) : dest.length >= 3;
     let msg = "";
-    if (amt && amt < L.payout_min) msg = `Минимальный вывод — ${L.payout_min} VLD`;
-    else if (amt > state.profile.balance) msg = "Недостаточно VLD на балансе";
-    else if (dest && !destOk) msg = "Проверь адрес TON-кошелька";
+    if (raw && isNaN(amt)) msg = ton ? "Введи сумму в VDT, например 2.5" : "Введи целое число VLD";
+    else if (n && n < P.min) msg = `Минимальный вывод — ${fmtCur(P.min, poCur)}`;
+    else if (n > bal(poCur)) msg = `Недостаточно ${poCur} на балансе`;
+    else if (dest && !destOk) msg = ton ? "Проверь адрес TON-кошелька" : "Укажи @username";
     setAlert($("po-warn"), msg);
-    $("po-submit-btn").disabled = !(amt >= L.payout_min && amt <= state.profile.balance && destOk);
+    $("po-submit-btn").disabled = !(!msg && n >= P.min && destOk);
   }
   async function payoutConfirm() {
+    const amount = toUnits($("po-amount").value, poCur);
+    if (isNaN(amount)) return;
     try {
-      const r = await api("/api/payout", { amount: parseInt($("po-amount").value, 10), destination: $("po-destination").value.trim(), method: poMethod });
-      setBalance(r.balance); closeOv("payout-modal"); haptic("ok");
+      // в демо-режиме сервер отвечает 403 с понятным текстом — показываем его
+      const r = await api("/api/payout", { currency: poCur, amount, destination: $("po-destination").value.trim() });
+      setBalances(r.balances); closeOv("payout-modal"); haptic("ok");
       toast("Заявка на вывод создана");
       switchPT("wd");
     } catch (e) { toast(e.message); haptic("error"); }
@@ -1500,7 +1719,7 @@
   async function giftWithdraw(id) {
     try {
       const r = await api(`/api/inventory/gifts/${id}/withdraw`, {});
-      if (r.balance !== undefined) setBalance(r.balance);
+      if (r.balance !== undefined) setVld(r.balance); // плата за передачу подарка — в VLD
       toast(r.fee ? `Заявка отправлена · за передачу списано ${r.fee} VLD` : "Заявка на выдачу подарка отправлена");
       await loadGifts(); renderInventory();
     } catch (e) { toast(e.message); }
@@ -1533,13 +1752,14 @@
   // ================================================================== события
   const ACTIONS = {
     "back": () => tab(state.back || "home"),
-    "topup": topupOpen, "topup-confirm": topupConfirm,
+    "topup": () => topupOpen("stars"), "topup-ton": () => topupOpen("ton"), "topup-confirm": topupConfirm,
     "ton-connect": tonToggle, "ton-pay": tonPay, "ton-open": tonOpenWallet, "ton-demo-pay": tonDemoPay,
     "stake-open": stakeOpen, "stake-confirm": stakeConfirm,
     "vault-try": tryVault, "auction-bid": placeBid, "pool-cancel": cancelPool,
     "pool-create": createPool, "gift-deposit": giftDeposit,
     "transfer-open": transferOpen, "transfer-confirm": transferConfirm,
     "payout-open": payoutOpen, "payout-confirm": payoutConfirm,
+    "channel-check": () => channelLink($("ch-chat-id").value),
     "fair-info": () => openOv("fair-modal"),
     "theme": () => { if (window.VLTheme) window.VLTheme.toggle(); },
     "ref-copy": () => copyText($("ref-link").textContent, "Скопировано!"),
@@ -1593,6 +1813,7 @@
     if ((el = t("[data-gift-wd]"))) return giftWithdraw(+el.dataset.giftWd);
     if ((el = t("[data-pt]"))) return switchPT(el.dataset.pt);
     if ((el = t("[data-num]"))) { $("vt-num").value = el.dataset.num; return vaultPick(); }
+    if ((el = t("#cr-stakes .vl-chip"))) { $("cr-stake").value = el.dataset.in; return crStakeSync(); }
     if ((el = t(".vl-cr-chips .vl-chip"))) {
       el.parentElement.querySelectorAll(".vl-chip").forEach((c) => {
         c.classList.toggle("is-on", c === el); c.setAttribute("aria-pressed", String(c === el));
@@ -1602,6 +1823,9 @@
     if ((el = t("[data-theme-set]"))) { if (window.VLTheme) window.VLTheme.set(el.dataset.themeSet); return syncThemeSeg(); }
     if ((el = t("[data-tum]"))) return topupMode(el.dataset.tum);
     if ((el = t("[data-pom]"))) return payoutMode(el.dataset.pom);
+    if ((el = t("[data-trc]"))) return transferCur(el.dataset.trc);
+    if ((el = t("[data-ccur]"))) { state.create.cur = el.dataset.ccur === "VDT" ? "VDT" : "VLD"; return renderCreateMode(); }
+    if ((el = t("[data-ch-link]"))) return channelLink(el.dataset.chLink);
     if ((el = t("[data-copy]"))) return copyText($(el.dataset.copy).textContent, "Скопировано!");
     if ((el = t("#tu-presets .vl-dlg-preset"))) {
       document.querySelectorAll("#tu-presets .vl-dlg-preset").forEach((c) => {
@@ -1622,6 +1846,9 @@
   $("vt-num").addEventListener("keydown", (e) => { if (e.key === "Enter") tryVault(); });
   $("auc-amt").addEventListener("keydown", (e) => { if (e.key === "Enter") placeBid(); });
   $("tr-recipient").addEventListener("input", transferLookup);
+  $("cr-stake").addEventListener("input", crStakeSync);
+  $("cr-channel").addEventListener("change", renderCreateSummary);
+  $("ch-chat-id").addEventListener("keydown", (e) => { if (e.key === "Enter") channelLink(e.target.value); });
   $("tr-amount").addEventListener("input", transferCalc);
   $("po-amount").addEventListener("input", payoutCalc);
   $("po-destination").addEventListener("input", payoutCalc);

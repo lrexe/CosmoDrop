@@ -213,6 +213,26 @@
 .vl-cr-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .vl-cr-chips .vl-chip { min-height: 38px; padding: 0 14px; }
 .vl-cr-chips .vl-chip .num { font-weight: 700; }
+/* currency switch + amount field (VDT is typed in decimal VDT; the unit sits inside the field on the right) */
+.vl-cr-cur .vl-seg-btn .ic { width: 16px; height: 16px; }
+.vl-cr-cur .vl-seg-btn[data-ccur="VLD"] .ic { color: var(--vld); }
+.vl-cr-cur .vl-seg-btn[data-ccur="VDT"] .ic { color: var(--vdt); }
+.vl-cr-amt { position: relative; max-width: 260px; }
+.vl-cr-amt .input { width: 100%; padding-right: 56px; font-size: var(--fs-lg); font-weight: 700; }
+.vl-cr-amt-u {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  font: 700 var(--fs-sm)/1 var(--font);
+  color: var(--muted);
+  pointer-events: none;
+}
+#cr-stake-hint:empty { display: none; }
+#cr-stake-hint { color: var(--danger); }
+.vl-cr-hint-key { display: flex; align-items: flex-start; gap: 8px; color: var(--text); }
+.vl-cr-hint-key .ic { flex: none; width: 16px; height: 16px; margin-top: 2px; color: var(--warn); }
+.vl-select { width: 100%; max-width: 360px; cursor: pointer; }
 
 /* step 4: summary */
 .vl-cr-sum-hero { display: flex; align-items: center; gap: 14px; min-width: 0; }
@@ -245,6 +265,33 @@
 .vl-cr-row-you dt { color: var(--text); font-weight: 600; }
 .vl-cr-row-you dd { color: var(--success); font-size: var(--fs-md); }
 .vl-cr-example { margin: 0; font: 500 var(--fs-xs)/1.5 var(--font); color: var(--muted); }
+/* one-line digest of the launch terms: «Запуск: 0.1 VDT · Вам: 95.5% банка · Срок: до 6 ч» */
+.vl-cr-line {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--vl-line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  font: 600 var(--fs-xs)/1.45 var(--vl-mono);
+  color: var(--text);
+}
+/* not enough VDT for the 0.1 VDT launch fee: the create button is disabled, this says why and how to fix it */
+.vl-cr-need {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--vdt) 40%, transparent);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--vdt) 10%, var(--surface));
+  font: 600 var(--fs-sm)/1.35 var(--font);
+  color: var(--text);
+}
+.vl-cr-need.hid { display: none; }
+.vl-cr-need > .ic { flex: none; width: 18px; height: 18px; color: var(--vdt); }
+.vl-cr-need > span { flex: 1 1 160px; }
 .vl-cr-fair {
   display: flex;
   gap: 10px;
@@ -525,10 +572,24 @@
 
 /* wallet */
 .vl-pf-wallet { display: flex; flex-direction: column; gap: 6px; padding: 18px; background: var(--vl-wallet-bg); box-shadow: var(--shadow-2); }
-.vl-pf-bal { display: flex; align-items: center; gap: 10px; min-width: 0; margin-top: 4px; }
-.vl-pf-bal > .ic { width: 26px; height: 26px; color: var(--accent-text); }
-.vl-pf-bal .num { min-width: 0; font-size: clamp(30px, 9vw, 40px); font-weight: 700; line-height: 1.1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.vl-pf-bal-u { font: 600 var(--fs-md)/1 var(--font); color: var(--muted); align-self: flex-end; padding-bottom: 6px; }
+/* two balances, one row each: VLD (gold star) and VDT (TON blue); never summed */
+.vl-pf-bals { display: grid; gap: 8px; margin-top: 4px; }
+.vl-pf-bal {
+  display: grid;
+  grid-template-columns: auto minmax(0, auto) auto 1fr;
+  align-items: baseline;
+  column-gap: 8px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--cur) 30%, var(--vl-line));
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--cur) 8%, transparent);
+}
+.vl-pf-bal > .ic { width: 22px; height: 22px; color: var(--cur); align-self: center; }
+.vl-pf-bal .num { min-width: 0; font-size: clamp(24px, 7vw, 30px); font-weight: 700; line-height: 1.1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vl-pf-bal-u { font: 700 var(--fs-md)/1 var(--font); color: var(--cur-text); }
+.vl-pf-bal-s { justify-self: end; font: 500 var(--fs-xs)/1.2 var(--font); color: var(--muted); white-space: nowrap; }
+@media (max-width: 380px) { .vl-pf-bal-s { display: none; } }
 .vl-pf-ton { display: flex; align-items: center; gap: 6px; min-width: 0; font: 500 var(--fs-sm)/1.3 var(--font); color: var(--muted); }
 .vl-pf-ton .ic { width: 16px; height: 16px; }
 .vl-pf-ton span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -629,6 +690,18 @@
 .vl-pf-note { padding: 18px; }
 .vl-pf-note-t { font: 700 var(--fs-md)/1.3 var(--font); color: var(--text); }
 .vl-pf-note-s { margin: 6px 0 0; font: 500 var(--fs-sm)/1.45 var(--font); color: var(--muted); }
+/* channels tab: steps, linked / pending lists, chat_id form */
+.vl-ch-steps { padding-left: 18px; display: grid; gap: 4px; }
+.vl-ch-steps b { color: var(--text); }
+#ch-list { display: grid; gap: 10px; margin-top: 14px; }
+#ch-list:empty { display: none; }
+.vl-ch-h { margin: 4px 0 0; font: 600 var(--fs-xs)/1.2 var(--font); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.vl-ch .vl-btn { flex: none; }
+.vl-ch-form { display: grid; gap: 8px; margin-top: 14px; padding: 14px; }
+.vl-ch-row { display: flex; gap: 8px; }
+.vl-ch-row .input { flex: 1; min-width: 0; }
+/* currency unit after an amount in the transaction list */
+.vl-tx-u { margin-left: 4px; font: 700 var(--fs-xs)/1 var(--font); color: var(--cur-text); }
 
 /* ── hover: precise pointers only ── */
 @media (hover: hover) and (pointer: fine) {
