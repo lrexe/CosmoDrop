@@ -315,7 +315,9 @@
   function renderPools() {
     let list = state.pools.live.slice();
     const f = state.filter;
-    if (f === "hot") list.sort((a, b) => (b.bank || 0) - (a.bank || 0));
+    // «горячесть» без сравнения банков разных валют: участники, затем банк в минимальных ставках (единица валюты сокращается)
+    const heat = (p) => (p.participants || 0) * 1e6 + (p.bank && p.min_stake ? p.bank / p.min_stake : 0);
+    if (f === "hot") list.sort((a, b) => heat(b) - heat(a));
     else if (f === "new") list.sort((a, b) => b.created_ts - a.created_ts);
     else if (f === "soon") list = list.filter((p) => p.ends_ts).sort((a, b) => a.ends_ts - b.ends_ts);
     else if (MODE_INFO[f]) list = list.filter((p) => p.mode === f);
@@ -323,8 +325,7 @@
     // «Все»: самый активный раунд (больше участников, затем банк) — первой крупной карточкой
     let feat = -1;
     if (f === "all" && list.length) {
-      const score = (p) => (p.participants || 0) * 1e9 + (p.bank || 0);
-      feat = list.reduce((bi, p, i) => (score(p) > score(list[bi]) ? i : bi), 0);
+      feat = list.reduce((bi, p, i) => (heat(p) > heat(list[bi]) ? i : bi), 0);
       list.unshift(list.splice(feat, 1)[0]); feat = 0;
     }
     const live = $("pools-list"), done = $("pools-finished");
@@ -907,8 +908,8 @@
   // non-empty (valid only if a number of the round's currency within [min, balance]), otherwise the slider value
   function stakeState() {
     const p = state.pool, cur = curOf(p), raw = $("sm-input").value.trim();
-    if (raw === "") return { amount: parseInt($("sm-slider").value, 10) || 0, ok: true, hint: "" };
-    const n = toUnits(raw, cur);
+    // пустое поле — сумма со шкалы; проверки те же (при балансе меньше минимума подтверждать нечего)
+    const n = raw === "" ? parseInt($("sm-slider").value, 10) || 0 : toUnits(raw, cur);
     if (isNaN(n)) return { amount: 0, shown: raw, ok: false, hint: cur === "VDT" ? "Введите сумму в VDT, например 0.5" : "Введите целое число VLD" };
     if (n < p.min_stake) return { amount: n, ok: false, hint: `Минимум ${fmtCur(p.min_stake, cur)}` };
     if (n > bal(cur)) return { amount: n, ok: false, hint: `Недостаточно ${cur} на балансе` };
@@ -1064,8 +1065,12 @@
     renderCreateChannels();
     renderCreateMode();
   }
-  async function loadChannelList() {
-    try { state.channels = await api("/api/channels"); } catch (e) { state.channels = { items: [], pending: [] }; }
+  // strict: ошибку показывает вызывающий (экран каналов); без strict — форма создания просто без каналов
+  async function loadChannelList(strict) {
+    try { state.channels = await api("/api/channels"); } catch (e) {
+      state.channels = { items: [], pending: [] };
+      if (strict) throw e;
+    }
     return state.channels;
   }
   // «Опубликовать в канале» — только если у игрока есть привязанные каналы, где бот сейчас админ
@@ -1364,7 +1369,7 @@
   const chName = (c) => c.title || (c.username ? "@" + c.username : "Канал " + c.chat_id);
   async function loadChannels() {
     const box = $("ch-list");
-    try { await loadChannelList(); } catch (e) { box.innerHTML = listEmpty("i-close", esc(e.message)); return; }
+    try { await loadChannelList(true); } catch (e) { box.innerHTML = listEmpty("i-close", esc(e.message)); return; }
     const { items = [], pending = [] } = state.channels;
     const row = (c, action) => `<li class="vl-tx vl-ch">
         <span class="vl-tx-ic">${icon("i-send")}</span>
@@ -1507,7 +1512,7 @@
     const v = tonAmount();
     $("tt-val").textContent = v; $("tt-eq-ton").textContent = v;
     // зачисляется по факту: милли-VDT = nanoTON // 10⁶ (как nano_to_vdt на сервере)
-    $("tt-eq-vdt").textContent = fmtAmt(Math.floor(Math.round(v * 1e9) / 1e6) * state.profile.rates.ton_to_vdt, "VDT");
+    $("tt-eq-vdt").textContent = fmtAmt(Math.floor(Math.round(v * 1e9) / 1e6), "VDT");
   }
   // the waiting spinner runs only while we poll; after the 5-minute give-up it is hidden (the status text stays)
   const tonSpin = (on) => document.querySelector("#tt-wait .vl-dlg-progress").classList.toggle("is-idle", !on);

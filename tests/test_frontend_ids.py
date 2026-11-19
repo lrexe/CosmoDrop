@@ -116,5 +116,19 @@ for fname, src in js.items():
             swallowed.append("%s:%d: %s" % (fname, n, line.strip()[:110]))
 check("no executable-looking assignment hides inside a trailing // comment", not swallowed, swallowed)
 
+# ---- task 6 frontend audit: source-level regressions (no JS test runner in this project)
+_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+vjs = open(os.path.join(_root, "static", "js", "vloody.js"), encoding="utf-8").read()
+adm = open(os.path.join(_root, "templates", "admin.html"), encoding="utf-8").read()
+check("admin payouts: VDT format chosen by r.currency, not by method (legacy TON rows are VLD)",
+      'r.currency === "VDT"' in adm and "ton ? fmtVdt(r.net)" not in adm)
+check("TON preview converts nano -> milli directly (no * rates.ton_to_vdt)", "* state.profile.rates.ton_to_vdt" not in vjs)
+check("hot sort / featured score never compares raw banks across currencies",
+      "(b.bank || 0) - (a.bank || 0)" not in vjs and "* 1e9 + (p.bank || 0)" not in vjs)
+check("loadChannels can surface a channel-list error (loadChannelList(true) rethrows)",
+      "loadChannelList(true)" in vjs and re.search(r"function loadChannelList\(strict\)", vjs) is not None)
+check("stake modal: slider amount is checked against balance too (confirm disabled when balance < min_stake)",
+      re.search(r'if \(raw === ""\) return \{ amount: parseInt', vjs) is None)
+
 print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)

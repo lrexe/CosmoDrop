@@ -280,7 +280,8 @@ td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
     async payouts(v) {
       const { items } = await api("payouts?status=" + filters.payouts);
       const rows = items.map((r) => {
-        const ton = r.method === "TON", nano = Math.round(r.net_ton * 1e9);
+        // способ (TON/Stars) — по method, формат суммы — по валюте: у старых TON-заявок currency = VLD
+        const ton = r.method === "TON", vdt = r.currency === "VDT", nano = Math.round(r.net_ton * 1e9);
         const pay = ton ? `<a class="btn sm ghost" href="ton://transfer/${encodeURIComponent(r.destination)}?amount=${nano}&text=${encodeURIComponent("Vloody #" + r.id)}">Открыть кошелёк</a>` : "";
         const acts = r.status === "pending"
           ? `${pay}<button class="btn sm ok" data-payout="${r.id}" data-action="paid">Выплачено</button><button class="btn sm ghost" data-payout="${r.id}" data-action="reject">Отклонить</button>` : "";
@@ -290,7 +291,7 @@ td .acts{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;}
           <td>${ton ? "TON" : "Stars"} <span class="muted">· ${esc(r.currency)}</span></td>
           <td class="mono"><button type="button" class="link mono" data-copy="${esc(r.destination)}" title="Скопировать">${esc(r.destination)}</button></td>
           <td class="num">${fmtCur(r.amount, r.currency)} ${esc(r.currency)}</td>
-          <td class="num"><b>${ton ? fmtVdt(r.net) + " TON" : fmt(r.net) + " Stars"}</b><div class="muted">комиссия ${fmtCur(r.commission, r.currency)} ${esc(r.currency)}</div></td>
+          <td class="num"><b>${vdt ? fmtVdt(r.net) + " TON" : ton ? r.net_ton + " TON" : fmt(r.net) + " Stars"}</b><div class="muted">комиссия ${fmtCur(r.commission, r.currency)} ${esc(r.currency)}</div></td>
           <td>${pill(r.status, PO[r.status])}</td><td class="muted">${when(r.ts)}</td>
           <td><div class="acts">${acts}</div></td></tr>`;
       });
