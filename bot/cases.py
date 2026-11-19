@@ -82,7 +82,23 @@ def get_or_create_user(telegram_id, username=None, first_name=None, photo_url=No
             user.photo_url = photo_url; changed = True
         if changed:
             db.session.commit()
+    if username:
+        release_username(user, username)
     return user
+
+
+def release_username(owner, username):
+    """@username принадлежит тому, кто сейчас вошёл с ним: снимаем его с других (устаревших) записей.
+
+    Telegram позволяет сменить или освободить имя, а у нас старое значение остаётся в базе,
+    пока игрок не зайдёт снова. Без этого перевод по @username мог бы уйти не тому.
+    """
+    stale = User.query.with_entities(User.id).filter(
+        db.func.lower(User.username) == username.lower(), User.id != owner.id).first()
+    if stale:                     # пишем только если есть что чистить — обычный вход без записи
+        User.query.filter(db.func.lower(User.username) == username.lower(), User.id != owner.id).update(
+            {"username": None}, synchronize_session=False)
+        db.session.commit()
 
 
 def user_rank(user):

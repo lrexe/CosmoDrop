@@ -300,8 +300,8 @@ import io, secrets                                              # noqa: E402
 from models import PayoutRequest, TonDeposit                    # noqa: E402
 
 IDS.update({"vlt3_alice": 990000930, "vlt3_bob": 990000931, "vlt3_ban": 990000932,
-            "vlt3_new": 990000933, "vlt3_old": 990000934})
-T3 = ("vlt3_alice", "vlt3_bob", "vlt3_ban", "vlt3_new", "vlt3_old")
+            "vlt3_new": 990000933, "vlt3_old": 990000934, "vlt3_stale": 990000935, "vlt3_dup": 990000936})
+T3 = ("vlt3_alice", "vlt3_bob", "vlt3_ban", "vlt3_new", "vlt3_old", "vlt3_stale", "vlt3_dup")
 plat_refs = []                       # ключи проводок платформы, созданных этим блоком
 
 
@@ -372,7 +372,34 @@ with app.app_context():
         db.session.commit(); dup = False
     except Exception:
         db.session.rollback(); dup = True
+    check("прямое повторное зачисление того же хеша падает на уникальном ref", dup is True, dup)
     check("повторное зачисление того же хеша невозможно", bals("vlt3_alice") == (0, 2500), bals("vlt3_alice"))
+
+# ---------- параллельная сверка: хеш уже зачислен другим процессом -> откат и пропуск, без 500
+race_hash = "t3-race-" + secrets.token_hex(6)
+with app.app_context():
+    dep2 = TonDeposit(user_id=uid_of("vlt3_alice"), comment="vl" + secrets.token_hex(6), created_at=datetime.utcnow())
+    db.session.add(dep2)
+    # будто соседний процесс уже провёл ton:<hash>, а его TonDeposit мы ещё не видим
+    db.session.add(LedgerTx(user_id=uid_of("vlt3_alice"), kind="deposit", amount=0, currency="VDT",
+                            title="race", ref=f"ton:{race_hash}"))
+    db.session.commit()
+    comment2, dep2_id = dep2.comment, dep2.id
+fake_chain = {"result": [{"transaction_id": {"hash": race_hash}, "in_msg": {
+    "source": "UQsender", "value": str(1_000_000_000), "message": comment2}}]}
+vloody.urllib.request.urlopen = lambda *a, **k: _Resp(json.dumps(fake_chain).encode())
+vloody.TON_WALLET, vloody.TON_SCAN_EVERY = "UQ" + "T" * 46, 0
+try:
+    with app.app_context():
+        try:
+            n3, race_err = vloody.scan_ton_deposits(force=True), None
+        except Exception as e:                                  # noqa: BLE001
+            n3, race_err = None, repr(e)
+        st2 = db.session.get(TonDeposit, dep2_id).status
+finally:
+    vloody.urllib.request.urlopen, vloody.TON_WALLET, vloody.TON_SCAN_EVERY = _urlopen, _wallet, _every
+check("дубль хеша при сверке: откат, 0 зачислений, без исключения",
+      race_err is None and n3 == 0 and st2 == "pending" and bals("vlt3_alice") == (0, 2500), (race_err, n3, st2, bals("vlt3_alice")))
 
 # ---------- Stars: 100 XTR -> 100 VLD
 charge = "t3-charge-" + secrets.token_hex(6)
@@ -497,6 +524,27 @@ with app.app_context():
     plat_refs.append(out.ref.rsplit(":", 1)[0] + ":fee" if out and out.ref else "")
 check("legacy to_telegram_id без currency -> VLD", r.status_code == 200 and bals("vlt3_alice") == (650, 3500)
       and bals("vlt3_bob") == (315, 1350), (bals("vlt3_alice"), bals("vlt3_bob")))
+
+# ---------- неоднозначный @username: не угадываем, а устаревшая запись чистится при входе владельца
+with app.app_context():
+    User.query.filter_by(telegram_id=IDS["vlt3_stale"]).first().username = "VLT3_DUP"   # устаревшее имя
+    db.session.commit()
+setbal("vlt3_alice", vld=1000, vdt=5000)
+setbal("vlt3_dup", vld=0, vdt=0)
+setbal("vlt3_stale", vld=0, vdt=0)
+r = get("vlt3_alice", "/api/users/lookup?username=@vlt3_dup")
+check("lookup неоднозначного имени -> 409", r.status_code == 409 and (r.get_json() or {}).get("error")
+      == "Этот @username неоднозначен — попроси друга открыть Vloody, чтобы обновить профиль", (r.status_code, r.get_json()))
+r = post("vlt3_alice", "/api/transfer", {"to_username": "vlt3_dup", "amount": 200, "currency": "VLD"})
+check("перевод на неоднозначное имя -> 409, деньги не двигались", r.status_code == 409
+      and bals("vlt3_alice") == (1000, 5000) and bals("vlt3_dup") == (0, 0) and bals("vlt3_stale") == (0, 0),
+      (r.status_code, bals("vlt3_alice"), bals("vlt3_dup"), bals("vlt3_stale")))
+get("vlt3_dup", "/api/profile")                                  # настоящий владелец заходит в приложение
+with app.app_context():
+    stale_name = User.query.filter_by(telegram_id=IDS["vlt3_stale"]).first().username
+check("вход владельца снял имя с устаревшей записи", stale_name is None, stale_name)
+r = get("vlt3_alice", "/api/users/lookup?username=@VLT3_DUP")
+check("после этого lookup находит владельца", r.status_code == 200 and r.get_json()["telegram_id"] == IDS["vlt3_dup"], r.get_json())
 
 # ---------- демо-бонус: 1000 VLD + NFT + 1 VDT, один раз; старым игрокам — только 1 VDT, один раз
 vloody.DEMO_MODE = True

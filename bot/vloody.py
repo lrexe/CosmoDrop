@@ -30,6 +30,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request
+from sqlalchemy.exc import IntegrityError
 
 from models import db, User, GiftItem, Pool, PoolEntry, LedgerTx, PayoutRequest, TonDeposit
 from bot.cases import get_or_create_user, err
@@ -708,14 +709,25 @@ def transactions():
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{3,32}$")
 
 
+AMBIGUOUS_USERNAME = "Этот @username неоднозначен — попроси друга открыть Vloody, чтобы обновить профиль"
+
+
 def find_by_username(raw):
-    """Пользователь по @username без учёта регистра. (None, True) — если имя некорректное."""
+    """Пользователь по @username без учёта регистра -> (user|None, problem).
+
+    problem: None; "bad" — имя некорректное; "ambiguous" — имя есть у нескольких активных
+    игроков (у кого-то оно устарело). Тогда не угадываем: перевод необратим.
+    """
     name = str(raw or "").strip()
     if name.startswith("@"):
         name = name[1:]
     if not USERNAME_RE.fullmatch(name):
-        return None, True
-    return User.query.filter(db.func.lower(User.username) == name.lower()).first(), False
+        return None, "bad"
+    rows = User.query.filter(db.func.lower(User.username) == name.lower()).limit(10).all()
+    active = [u for u in rows if not u.is_banned]
+    if len(active) > 1:
+        return None, "ambiguous"
+    return (active or rows or [None])[0], None
 
 
 def _int_arg(raw):
@@ -727,9 +739,11 @@ def _int_arg(raw):
 @vloody_bp.route("/api/users/lookup", methods=["GET"])
 def user_lookup():
     if "username" in request.args or "telegram_id" not in request.args:
-        u, bad = find_by_username(request.args.get("username"))
-        if bad:
+        u, problem = find_by_username(request.args.get("username"))
+        if problem == "bad":
             return err("Укажи @username: латиница, цифры и _, от 3 до 32 символов", 400)
+        if problem == "ambiguous":
+            return err(AMBIGUOUS_USERNAME, 409)
     else:                                     # запасной способ — по Telegram ID
         try:
             tid = int(request.args.get("telegram_id", ""))
@@ -754,9 +768,11 @@ def transfer():
     except (TypeError, ValueError):
         return err("Проверь получателя и сумму", 400)
     if data.get("to_username") not in (None, ""):
-        target, bad = find_by_username(data.get("to_username"))
-        if bad:
+        target, problem = find_by_username(data.get("to_username"))
+        if problem == "bad":
             return err("Проверь @username получателя", 400)
+        if problem == "ambiguous":
+            return err(AMBIGUOUS_USERNAME, 409)
     else:                                     # старый клиент: по Telegram ID
         try:
             target = User.query.filter_by(telegram_id=_int_arg(data.get("to_telegram_id"))).first()
@@ -956,10 +972,12 @@ def scan_ton_deposits(force=False):
                              created_at=now())
             db.session.add(dep)
             db.session.flush()
-        _credit_ton(dep, nano, tx_hash)
-        credited += 1
-    if credited:
-        db.session.commit()
+        try:
+            _credit_ton(dep, nano, tx_hash)
+            db.session.commit()          # по одному: дубль одной транзакции не откатывает остальные
+            credited += 1
+        except IntegrityError:           # параллельная сверка уже зачислила этот хеш
+            db.session.rollback()
     return credited
 
 
