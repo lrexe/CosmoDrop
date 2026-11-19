@@ -32,7 +32,7 @@ class User(db.Model):
 
     stars_balance = db.Column(db.Integer, default=0)   # баланс VLD
     vdt_balance = db.Column(db.Integer, default=0)     # баланс VDT в милли-VDT (1 VDT = 1000)
-    welcome_bonus = db.Column(db.Integer, default=0)   # 1 — демо-бонус за вход уже выдан
+    welcome_bonus = db.Column(db.Integer, default=0)   # демо-бонус: 1 — VLD и NFT, 2 — ещё и 1 VDT
     total_earned = db.Column(db.Integer, default=0)
     total_spent = db.Column(db.Integer, default=0)
     cases_opened = db.Column(db.Integer, default=0)
@@ -362,8 +362,8 @@ class LedgerTx(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
 
     def to_dict(self):
-        return {"id": self.id, "kind": self.kind, "amount": self.amount, "title": self.title,
-                "ts": int(self.created_at.replace(tzinfo=timezone.utc).timestamp())}
+        return {"id": self.id, "kind": self.kind, "amount": self.amount, "currency": self.currency or "VLD",
+                "title": self.title, "ts": int(self.created_at.replace(tzinfo=timezone.utc).timestamp())}
 
 
 class PayoutRequest(db.Model):
@@ -379,14 +379,15 @@ class PayoutRequest(db.Model):
     commission = db.Column(db.Integer, nullable=False)
     net = db.Column(db.Integer, nullable=False)                     # к выплате
     status = db.Column(db.String(10), default="pending", index=True)  # pending | paid | rejected
-    net_nano = db.Column(db.BigInteger, default=0)                  # для TON: к выплате в nanoTON (курс на момент заявки)
+    net_nano = db.Column(db.BigInteger, default=0)                  # для TON (VDT): к выплате в nanoTON = net·10⁶
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     processed_at = db.Column(db.DateTime)
 
     user = db.relationship("User", lazy=True)
 
     def to_dict(self, admin=False):
-        d = {"id": self.id, "method": self.method, "destination": self.destination,
+        d = {"id": self.id, "method": self.method, "currency": self.currency or "VLD",
+             "destination": self.destination,
              "amount": self.amount, "commission": self.commission, "net": self.net,
              "status": self.status, "net_ton": (self.net_nano or 0) / 1e9,
              "ts": int(self.created_at.replace(tzinfo=timezone.utc).timestamp())}
@@ -405,7 +406,7 @@ class TonDeposit(db.Model):
     comment = db.Column(db.String(32), unique=True, nullable=False, index=True)
     status = db.Column(db.String(10), default="pending", index=True)   # pending | credited
     amount_nano = db.Column(db.BigInteger, default=0)                   # сколько реально пришло
-    vld = db.Column(db.Integer, default=0)                              # сколько зачислено
+    vld = db.Column(db.Integer, default=0)                              # сколько зачислено — в милли-VDT (имя колонки историческое)
     tx_hash = db.Column(db.String(128), unique=True)                    # защита от повторного зачисления
     created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
     credited_at = db.Column(db.DateTime)

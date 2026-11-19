@@ -45,17 +45,15 @@ vloody_bp = Blueprint("vloody_api", __name__)
 # ------------------------------------------------------------------ экономика
 COMMISSION_RATE = 0.045         # платформа берёт 4.5% банка, организатор — остальное
 REF_RATE = 0.01                 # рефереру — 1% ставок друга (из комиссии платформы)
-TRANSFER_MIN = 150
-TRANSFER_FEE_RATE = 0.10
-PAYOUT_MIN = 100
-PAYOUT_FEE_RATE = 0.20            # вывод в Telegram Stars
-PAYOUT_FEE_RATE_TON = 0.10        # вывод в TON
-
-# ---- VLD: единая внутренняя валюта. Покупается за Stars или TON.
-STARS_TO_VLD = 0.95               # 100 ⭐ -> 95 VLD (5% — комиссия платформы)
-# Сколько VLD даёт 1 TON. ВАЖНО: держи курс близко к рынку (см. README, «Курс VLD»),
-# иначе появится арбитраж: купить VLD дешёвым способом и вывести дорогим.
-VLD_PER_TON = int(os.getenv("VLD_PER_TON", "100"))
+# Две независимые валюты: VLD (1 Star = 1 VLD) и VDT (1 TON = 1 VDT, хранится в милли-VDT).
+# Ни один путь не меняет VLD на VDT и обратно. Комиссии — в промилле, округление вниз (целочисленно).
+TRANSFER_MIN = {"VLD": 150, "VDT": 1500}
+TRANSFER_FEE_PERMILLE = 100                       # 10%
+PAYOUT_MIN = {"VLD": 275, "VDT": 2500}            # VLD -> Stars, VDT -> TON
+PAYOUT_FEE_PERMILLE = {"VLD": 135, "VDT": 115}    # 13.5% и 11.5%
+PAYOUT_METHOD = {"VLD": "STARS", "VDT": "TON"}
+STARS_TO_VLD = 1                                  # 1 ⭐ -> 1 VLD, без комиссии
+NANO_PER_MILLI = 10**6                            # 1 TON = 1 VDT: милли-VDT = nanoTON // 10⁶
 TON_MIN_DEPOSIT_NANO = int(float(os.getenv("TON_MIN_DEPOSIT", "0.5")) * 1e9)
 TON_WALLET = os.getenv("TON_WALLET_ADDRESS", "").strip()        # кошелёк платформы для депозитов
 TON_API_BASE = os.getenv("TON_API_BASE", "https://toncenter.com/api/v2").rstrip("/")
@@ -145,6 +143,16 @@ def mover(cur):
     if cur == "VDT":
         return move_vdt
     raise ValueError("Неизвестная валюта")
+
+
+def fee_floor(amount, permille):
+    return amount * permille // 1000
+
+
+def clean_currency(raw, default="VLD"):
+    """Валюта из тела запроса: только из белого списка, иначе None."""
+    cur = default if raw is None or raw == "" else raw
+    return cur if cur in CURRENCIES else None
 
 
 def balance_of(user, cur):
@@ -587,30 +595,46 @@ def profile_dict(user):
             "rate": REF_RATE,
         },
         "demo": DEMO_MODE,
-        "limits": {"transfer_min": TRANSFER_MIN, "transfer_fee": TRANSFER_FEE_RATE,
-                   "payout_min": PAYOUT_MIN, "payout_fee": PAYOUT_FEE_RATE,
-                   "payout_fee_ton": PAYOUT_FEE_RATE_TON, "commission": COMMISSION_RATE},
-        "rates": {"stars_to_vld": STARS_TO_VLD, "vld_per_ton": VLD_PER_TON,
+        "limits": {
+            "payout_min_vld": PAYOUT_MIN["VLD"], "payout_fee_vld": PAYOUT_FEE_PERMILLE["VLD"] / 1000,
+            "payout_min_vdt": PAYOUT_MIN["VDT"], "payout_fee_vdt": PAYOUT_FEE_PERMILLE["VDT"] / 1000,
+            "transfer_min_vld": TRANSFER_MIN["VLD"], "transfer_min_vdt": TRANSFER_MIN["VDT"],
+            "transfer_fee": TRANSFER_FEE_PERMILLE / 1000, "commission": COMMISSION_RATE,
+            "create_fee_vdt": CREATE_FEE_VDT,
+            # старые ключи — их читает текущий интерфейс (до его переделки под две валюты)
+            "transfer_min": TRANSFER_MIN["VLD"], "payout_min": PAYOUT_MIN["VLD"],
+            "payout_fee": PAYOUT_FEE_PERMILLE["VLD"] / 1000, "payout_fee_ton": PAYOUT_FEE_PERMILLE["VDT"] / 1000,
+        },
+        "rates": {"stars_to_vld": STARS_TO_VLD, "ton_to_vdt": 1,
+                  "vld_per_ton": 1,           # старый ключ для текущего интерфейса: 1 TON = 1 VDT
                   "ton_min": TON_MIN_DEPOSIT_NANO / 1e9,
                   "ton_enabled": bool(TON_WALLET) or DEMO_MODE},
     }
 
 
 WELCOME_VLD = int(os.getenv("WELCOME_VLD", "1000"))
+WELCOME_VDT = 1000                    # 1 VDT в милли
+# User.welcome_bonus: 0 — ничего; 1 — выдано 1000 VLD и NFT (до появления VDT); 2 — выдано всё, включая 1 VDT
 
 
 def grant_welcome(user):
-    """Демо-режим: каждому игроку один раз — 1000 VLD и случайный NFT-подарок (не настоящие)."""
-    if not DEMO_MODE or user.welcome_bonus:
+    """Демо-режим: каждому игроку один раз — 1000 VLD, случайный NFT-подарок и 1 VDT (не настоящие).
+
+    Тем, кто получил бонус до появления VDT (welcome_bonus=1), один раз доначисляется только 1 VDT.
+    """
+    if not DEMO_MODE or (user.welcome_bonus or 0) >= 2:
         return False
     lock(user)
-    if user.welcome_bonus:                    # параллельный запрос успел раньше
+    stage = user.welcome_bonus or 0
+    if stage >= 2:                            # параллельный запрос успел раньше
         return False
-    name, emoji, slug = secrets.choice(DEMO_GIFTS)
-    db.session.add(GiftItem(owner_id=user.id, name=f"{name} #{slug.rsplit('-', 1)[1]}", emoji=emoji,
-                            art=secrets.choice(ARTS), slug=slug, source="bonus"))
-    move(user, WELCOME_VLD, "bonus", f"Приветственный бонус · {WELCOME_VLD} VLD и {emoji} {name}")
-    user.welcome_bonus = 1
+    if stage < 1:
+        name, emoji, slug = secrets.choice(DEMO_GIFTS)
+        db.session.add(GiftItem(owner_id=user.id, name=f"{name} #{slug.rsplit('-', 1)[1]}", emoji=emoji,
+                                art=secrets.choice(ARTS), slug=slug, source="bonus"))
+        move_vld(user, WELCOME_VLD, "bonus", f"Приветственный бонус · {WELCOME_VLD} VLD и {emoji} {name}")
+    move_vdt(user, WELCOME_VDT, "bonus", f"Приветственный бонус · {fmt_cur(WELCOME_VDT, 'VDT')}")
+    user.welcome_bonus = 2
     db.session.commit()
     return True
 
@@ -681,29 +705,65 @@ def transactions():
 
 
 # ================================================================== КОШЕЛЁК
+USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{3,32}$")
+
+
+def find_by_username(raw):
+    """Пользователь по @username без учёта регистра. (None, True) — если имя некорректное."""
+    name = str(raw or "").strip()
+    if name.startswith("@"):
+        name = name[1:]
+    if not USERNAME_RE.fullmatch(name):
+        return None, True
+    return User.query.filter(db.func.lower(User.username) == name.lower()).first(), False
+
+
+def _int_arg(raw):
+    if isinstance(raw, bool):
+        raise ValueError
+    return int(raw)
+
+
 @vloody_bp.route("/api/users/lookup", methods=["GET"])
 def user_lookup():
-    try:
-        tid = int(request.args.get("telegram_id", ""))
-    except ValueError:
-        return err("Неверный Telegram ID", 400)
-    u = User.query.filter_by(telegram_id=tid).first()
+    if "username" in request.args or "telegram_id" not in request.args:
+        u, bad = find_by_username(request.args.get("username"))
+        if bad:
+            return err("Укажи @username: латиница, цифры и _, от 3 до 32 символов", 400)
+    else:                                     # запасной способ — по Telegram ID
+        try:
+            tid = int(request.args.get("telegram_id", ""))
+        except ValueError:
+            return err("Неверный Telegram ID", 400)
+        u = User.query.filter_by(telegram_id=tid).first()
     if not u or u.is_banned:
         return err("Пользователь не найден", 404)
-    return jsonify({"telegram_id": u.telegram_id, "name": display_name(u)})
+    return jsonify({"telegram_id": u.telegram_id, "name": u.first_name or display_name(u),
+                    "username": u.username, "photo": u.photo})
 
 
 @vloody_bp.route("/api/transfer", methods=["POST"])
 def transfer():
     user = me()
     data = request.get_json(silent=True) or {}
+    cur = clean_currency(data.get("currency"))
+    if not cur:
+        return err("Неизвестная валюта", 400)
     try:
-        tid, amount = int(data.get("to_telegram_id")), int(data.get("amount"))
+        amount = _int_arg(data.get("amount"))
     except (TypeError, ValueError):
         return err("Проверь получателя и сумму", 400)
-    if amount < TRANSFER_MIN:
-        return err(f"Минимальная сумма перевода — {TRANSFER_MIN} VLD", 400)
-    target = User.query.filter_by(telegram_id=tid).first()
+    if data.get("to_username") not in (None, ""):
+        target, bad = find_by_username(data.get("to_username"))
+        if bad:
+            return err("Проверь @username получателя", 400)
+    else:                                     # старый клиент: по Telegram ID
+        try:
+            target = User.query.filter_by(telegram_id=_int_arg(data.get("to_telegram_id"))).first()
+        except (TypeError, ValueError):
+            return err("Проверь получателя и сумму", 400)
+    if amount < TRANSFER_MIN[cur]:
+        return err(f"Минимальная сумма перевода — {fmt_cur(TRANSFER_MIN[cur], cur)}", 400)
     if not target or target.is_banned:
         return err("Пользователь не найден", 404)
     if target.id == user.id:
@@ -714,53 +774,69 @@ def transfer():
         lock(u)
     if user.is_banned:
         return err("Доступ заблокирован", 403)
-    if user.stars_balance < amount:
-        return err("Недостаточно VLD", 400)
-    fee = int(amount * TRANSFER_FEE_RATE)
+    if balance_of(user, cur) < amount:
+        return err(f"Недостаточно {cur}", 400)
+    fee = fee_floor(amount, TRANSFER_FEE_PERMILLE)
     net = amount - fee
-    move(user, -amount, "transfer_out", f"Перевод → {display_name(target)}")
-    move(target, net, "transfer_in", f"Перевод от {display_name(user)}")
-    move(None, fee, "commission", "Комиссия перевода")
+    pay = mover(cur)                          # обе стороны и комиссия — в одной валюте
+    ref = "transfer:" + secrets.token_hex(10)
+    pay(user, -amount, "transfer_out", f"Перевод → {display_name(target)}", ref=ref + ":out")
+    pay(target, net, "transfer_in", f"Перевод от {display_name(user)}", ref=ref + ":in")
+    pay(None, fee, "commission", "Комиссия перевода", ref=ref + ":fee")
     db.session.commit()
-    return jsonify({"sent": amount, "fee": fee, "received": net, "balance": user.stars_balance})
+    return jsonify({"currency": cur, "sent": amount, "fee": fee, "received": net,
+                    "balance": user.stars_balance,
+                    "balances": {"VLD": user.stars_balance or 0, "VDT": user.vdt_balance or 0}})
+
+
+def payout_ref(req, what):
+    """Ключ проводки по заявке на вывод. Время создания в ключе — id в SQLite может повториться."""
+    return f"payout:{req.id}:{req.created_at:%Y%m%d%H%M%S%f}:{what}"
 
 
 @vloody_bp.route("/api/payout", methods=["POST"])
 def payout_request():
     if DEMO_MODE:
-        return err("В демо-режиме вывод отключён: VLD и подарки не настоящие", 403)
+        return err("В демо-режиме вывод отключён: VLD, VDT и подарки не настоящие", 403)
     user = lock(me())
+    if user.is_banned:
+        return err("Доступ заблокирован", 403)
     data = request.get_json(silent=True) or {}
-    method = data.get("method", "STARS")
+    raw = data.get("currency")
+    if raw in (None, ""):                     # старый клиент: method STARS -> VLD, TON -> VDT
+        raw = {"STARS": "VLD", "TON": "VDT"}.get(str(data.get("method") or "STARS"))
+    cur = clean_currency(raw, default=None)
+    if not cur:
+        return err("Неизвестная валюта вывода", 400)
+    method = PAYOUT_METHOD[cur]
     destination = clean_text(data.get("destination") or "", 128)
     try:
-        amount = int(data.get("amount"))
+        amount = _int_arg(data.get("amount"))
     except (TypeError, ValueError):
         return err("Неверная сумма", 400)
-    if method not in ("STARS", "TON"):
-        return err("Неизвестный способ вывода", 400)
     if method == "TON":
         if not destination or not TON_ADDRESS_RE.match(destination):
             return err("Укажи адрес TON-кошелька (EQ… или UQ…)", 400)
     elif not destination or len(destination) < 3:
         return err("Укажи, куда выводить", 400)
-    if amount < PAYOUT_MIN:
-        return err(f"Минимальный вывод — {PAYOUT_MIN} VLD", 400)
-    if user.is_banned:
-        return err("Доступ заблокирован", 403)
-    if user.stars_balance < amount:
-        return err("Недостаточно VLD", 400)
+    if amount < PAYOUT_MIN[cur]:
+        return err(f"Минимальный вывод — {fmt_cur(PAYOUT_MIN[cur], cur)}", 400)
+    if balance_of(user, cur) < amount:
+        return err(f"Недостаточно {cur}", 400)
 
-    fee = int(amount * (PAYOUT_FEE_RATE_TON if method == "TON" else PAYOUT_FEE_RATE))
+    fee = fee_floor(amount, PAYOUT_FEE_PERMILLE[cur])
     net = amount - fee
-    # курс фиксируется в момент заявки: администратор выплатит ровно net_nano
-    net_nano = net * 10**9 // VLD_PER_TON if method == "TON" else 0
-    req = PayoutRequest(user_id=user.id, method=method, destination=destination,
+    # 1 VDT = 1 TON: администратор выплатит ровно net_nano; Stars выплачиваются по net (1 VLD = 1 ⭐)
+    net_nano = net * NANO_PER_MILLI if cur == "VDT" else 0
+    req = PayoutRequest(user_id=user.id, method=method, currency=cur, destination=destination,
                         amount=amount, commission=fee, net=net, net_nano=net_nano, created_at=now())
     db.session.add(req)
-    move(user, -amount, "payout", f"Заявка на вывод ({method}) → {destination[:24]}")
+    db.session.flush()
+    mover(cur)(user, -amount, "payout", f"Заявка на вывод ({method}) → {destination[:24]}",
+               ref=payout_ref(req, "out"))
     db.session.commit()
-    return jsonify({"request": req.to_dict(), "balance": user.stars_balance})
+    return jsonify({"request": req.to_dict(), "balance": user.stars_balance,
+                    "balances": {"VLD": user.stars_balance or 0, "VDT": user.vdt_balance or 0}})
 
 
 @vloody_bp.route("/api/payouts", methods=["GET"])
@@ -779,7 +855,8 @@ def tg_api(method, payload):
 
 
 def stars_to_vld(stars):
-    return int(stars * STARS_TO_VLD)
+    """1 ⭐ = 1 VLD, без комиссии."""
+    return int(stars) * STARS_TO_VLD
 
 
 @vloody_bp.route("/api/wallet/topup", methods=["POST"])
@@ -795,7 +872,7 @@ def topup():
 
     vld = stars_to_vld(stars)
     if DEMO_MODE:
-        move(lock(user), vld, "deposit", f"Демо-пополнение · {stars} Stars")
+        move_vld(lock(user), vld, "deposit", f"Демо-пополнение · {stars} Stars")
         db.session.commit()
         return jsonify({"credited": vld, "balance": user.stars_balance})
     try:
@@ -812,16 +889,18 @@ def topup():
 _last_scan = 0.0
 
 
-def nano_to_vld(nano):
-    return int(nano) * VLD_PER_TON // 10**9
+def nano_to_vdt(nano):
+    """1 TON = 1 VDT: nanoTON -> милли-VDT (остаток меньше 0.001 TON отбрасывается)."""
+    return int(nano) // NANO_PER_MILLI
 
 
 def _credit_ton(dep, nano, tx_hash):
+    """TON зачисляется только в VDT. ref ton:<hash> уникален — одна транзакция не зачтётся дважды."""
     user = db.session.get(User, dep.user_id)
-    vld = nano_to_vld(nano)
-    dep.status, dep.amount_nano, dep.vld = "credited", nano, vld
+    milli = nano_to_vdt(nano)
+    dep.status, dep.amount_nano, dep.vld = "credited", nano, milli
     dep.tx_hash, dep.credited_at = tx_hash, now()
-    move(lock(user), vld, "deposit", f"Пополнение {nano / 1e9:g} TON", ref=f"ton:{tx_hash}")
+    move_vdt(lock(user), milli, "deposit", f"Пополнение {nano / 1e9:g} TON", ref=f"ton:{tx_hash}")
 
 
 def _tx_comment(msg):
@@ -907,7 +986,7 @@ def ton_intent():
     address = TON_WALLET or "EQDemoWa11etDemoWa11etDemoWa11etDemoWa11etDemoWa1"
     link = f"ton://transfer/{address}?" + urllib.parse.urlencode({"amount": nano, "text": dep.comment})
     return jsonify({"deposit_id": dep.id, "address": address, "comment": dep.comment,
-                    "amount_nano": str(nano), "will_credit": nano_to_vld(nano), "link": link,
+                    "amount_nano": str(nano), "will_credit": nano_to_vdt(nano), "currency": "VDT", "link": link,
                     "demo": not TON_WALLET})
 
 
@@ -922,7 +1001,9 @@ def ton_check():
         scan_ton_deposits()
         db.session.refresh(dep)
     db.session.refresh(user)
-    return jsonify({"status": dep.status, "credited": dep.vld or 0, "balance": user.stars_balance})
+    return jsonify({"status": dep.status, "credited": dep.vld or 0, "currency": "VDT",
+                    "balance": user.stars_balance, "balances": {"VLD": user.stars_balance or 0,
+                                                                "VDT": user.vdt_balance or 0}})
 
 
 @vloody_bp.route("/api/wallet/ton/demo-pay", methods=["POST"])
@@ -942,7 +1023,9 @@ def ton_demo_pay():
         return err("Пополнение не найдено", 404)
     _credit_ton(dep, nano, "demo-" + secrets.token_hex(8))
     db.session.commit()
-    return jsonify({"status": "credited", "credited": dep.vld, "balance": user.stars_balance})
+    return jsonify({"status": "credited", "credited": dep.vld, "currency": "VDT",
+                    "balance": user.stars_balance, "balances": {"VLD": user.stars_balance or 0,
+                                                                "VDT": user.vdt_balance or 0}})
 
 
 WELCOME_TEXT = (
@@ -961,7 +1044,8 @@ WELCOME_TEXT = (
 
 HELP_TEXT = (
     "📖 Справка Vloody\n\n"
-    "💰 Баланс — внутренняя валюта VLD. Пополнение: Telegram Stars или TON, вывод — по заявке.\n\n"
+    "💰 Баланс — две отдельные валюты: VLD (пополнение Telegram Stars, 1 ⭐ = 1 VLD) и VDT "
+    "(пополнение TON, 1 TON = 1 VDT). Друг в друга не обмениваются. Вывод — по заявке.\n\n"
     "🎁 Подарки — принимаются уникальные (NFT) подарки. Отправь их аккаунту-хранителю "
     "(инструкция — в боте хранителя, команда /start). Подарок появится в Профиле → Инвентарь.\n\n"
     "🎯 Раунд — подарок лежит у хранителя, игроки делают ставки. Комиссия платформы — 4.5% с банка, запуск раунда — 0.1 VDT. Раунд живёт до 6 часов; если игроков меньше двух (или сейф не вскрыт) — ставки возвращаются.\n\n"
@@ -1040,7 +1124,7 @@ def handle_payment_update(update):
         return {"status": "user_not_found"}
     stars = int(pay["total_amount"])                  # у XTR нет копеек: сумма уже в звёздах
     vld = stars_to_vld(stars)
-    move(lock(user), vld, "deposit", f"Пополнение · {stars} Telegram Stars", ref=charge)
+    move_vld(lock(user), vld, "deposit", f"Пополнение · {stars} Telegram Stars", ref=charge)
     db.session.commit()
     return {"status": "credited", "amount": vld}
 
@@ -1233,12 +1317,13 @@ def admin_payout_process(req_id):
     req = PayoutRequest.query.filter_by(id=req_id).with_for_update().first()
     if not req or req.status != "pending":
         return err("Заявка не найдена", 404)
+    pay = mover(req.currency or "VLD")        # валюта заявки; деньги уже списаны при подаче
     if action == "paid":
         req.status = "paid"
-        move(None, req.commission, "commission", f"Комиссия вывода #{req.id}")
+        pay(None, req.commission, "commission", f"Комиссия вывода #{req.id}", ref=payout_ref(req, "fee"))
     elif action == "reject":
         req.status = "rejected"
-        move(lock(req.user), req.amount, "payout_refund", f"Возврат заявки #{req.id}")
+        pay(lock(req.user), req.amount, "payout_refund", f"Возврат заявки #{req.id}", ref=payout_ref(req, "refund"))
     else:
         return err("action: paid | reject", 400)
     req.processed_at = now()
@@ -1267,24 +1352,34 @@ def admin_stats():
     platform = LedgerTx.user_id == None                                   # noqa: E711
     today = datetime.combine(now().date(), datetime.min.time())
 
-    def revenue(since=None):
-        f = [platform, LedgerTx.kind == "commission"]
+    def revenue(since=None, cur="VLD"):
+        # валюты не складываем: VLD и милли-VDT — разные единицы
+        f = [platform, LedgerTx.kind == "commission", LedgerTx.currency == cur]
         if since:
             f.append(LedgerTx.created_at >= since)
         return _sum(LedgerTx.amount, *f)
 
-    by_source = {name: _sum(LedgerTx.amount, platform, LedgerTx.kind == "commission",
-                            LedgerTx.title.like(prefix + "%"))
-                 for name, prefix in (("rounds", "Комиссия раунда"), ("transfers", "Комиссия перевода"),
-                                      ("payouts", "Комиссия вывода"))}
+    def by_source(cur):
+        return {name: _sum(LedgerTx.amount, platform, LedgerTx.kind == "commission", LedgerTx.currency == cur,
+                           LedgerTx.title.like(prefix + "%"))
+                for name, prefix in (("rounds", "Комиссия раунда"), ("transfers", "Комиссия перевода"),
+                                     ("payouts", "Комиссия вывода"))}
     pending = PayoutRequest.query.filter_by(status="pending")
     return jsonify({
         "revenue": {"today": revenue(today), "week": revenue(now() - timedelta(days=7)),
-                    "total": revenue(), "by_source": by_source},
+                    "total": revenue(), "by_source": by_source("VLD")},
+        "revenue_vdt": {"today": revenue(today, "VDT"), "week": revenue(now() - timedelta(days=7), "VDT"),
+                        "total": revenue(cur="VDT"), "by_source": by_source("VDT"),
+                        "create_fees": _sum(LedgerTx.amount, platform, LedgerTx.kind == "create_fee",
+                                            LedgerTx.currency == "VDT")},
         "liabilities": {
             "user_balances": _sum(User.stars_balance),
             "locked_in_live_pools": _sum(Pool.bank, Pool.status == "live"),
-            "pending_payouts": _sum(PayoutRequest.amount, PayoutRequest.status == "pending"),
+            "pending_payouts": _sum(PayoutRequest.amount, PayoutRequest.status == "pending",
+                                    PayoutRequest.currency == "VLD"),
+            "user_balances_vdt": _sum(User.vdt_balance),
+            "pending_payouts_vdt": _sum(PayoutRequest.amount, PayoutRequest.status == "pending",
+                                        PayoutRequest.currency == "VDT"),
             "gift_fee_reserve": _sum(LedgerTx.amount, platform, LedgerTx.kind == "gift_fee"),
         },
         "counts": {
@@ -1296,12 +1391,14 @@ def admin_stats():
         },
         "deposits": {
             "ton_nano": _sum(TonDeposit.amount_nano, TonDeposit.status == "credited"),
-            "ton_vld": _sum(TonDeposit.vld, TonDeposit.status == "credited"),
+            "ton_vld": _sum(TonDeposit.vld, TonDeposit.status == "credited"),   # старый ключ: это милли-VDT
+            "ton_vdt_milli": _sum(TonDeposit.vld, TonDeposit.status == "credited"),
             "ton_pending": TonDeposit.query.filter(
                 TonDeposit.status == "pending", TonDeposit.created_at >= now() - timedelta(hours=2)).count(),
-            "paid_out_vld": _sum(PayoutRequest.amount, PayoutRequest.status == "paid"),
+            "paid_out_vld": _sum(PayoutRequest.amount, PayoutRequest.status == "paid", PayoutRequest.currency == "VLD"),
+            "paid_out_vdt": _sum(PayoutRequest.amount, PayoutRequest.status == "paid", PayoutRequest.currency == "VDT"),
         },
-        "config": {"demo": DEMO_MODE, "vld_per_ton": VLD_PER_TON, "ton_wallet": TON_WALLET,
+        "config": {"demo": DEMO_MODE, "vld_per_ton": 1, "ton_to_vdt": 1, "ton_wallet": TON_WALLET,
                    "commission": COMMISSION_RATE},
     })
 

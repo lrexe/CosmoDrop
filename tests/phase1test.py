@@ -294,5 +294,247 @@ with app.app_context():
     User.query.filter(User.id.in_(uids)).delete(synchronize_session=False)
     db.session.commit()
 
+
+# ================================================================== задача 3: кошелёк в двух валютах
+import io, secrets                                              # noqa: E402
+from models import PayoutRequest, TonDeposit                    # noqa: E402
+
+IDS.update({"vlt3_alice": 990000930, "vlt3_bob": 990000931, "vlt3_ban": 990000932,
+            "vlt3_new": 990000933, "vlt3_old": 990000934})
+T3 = ("vlt3_alice", "vlt3_bob", "vlt3_ban", "vlt3_new", "vlt3_old")
+plat_refs = []                       # ключи проводок платформы, созданных этим блоком
+
+
+def uid_of(who):
+    with app.app_context():
+        return User.query.filter_by(telegram_id=IDS[who]).first().id
+
+
+def plat_row(ref):
+    with app.app_context():
+        r = LedgerTx.query.filter(LedgerTx.user_id == None, LedgerTx.ref == ref).first()  # noqa: E711
+        return (r.kind, r.currency, r.amount) if r else None
+
+
+for who in T3:
+    get(who, "/api/profile")
+
+# ---------- константы и профиль
+lim = get("vlt3_alice", "/api/profile").get_json()
+L, R = lim["limits"], lim["rates"]
+check("limits: новые ключи", all(L.get(k) == v for k, v in {
+    "payout_min_vld": 275, "payout_fee_vld": 0.135, "payout_min_vdt": 2500, "payout_fee_vdt": 0.115,
+    "transfer_min_vld": 150, "transfer_min_vdt": 1500, "transfer_fee": 0.10, "commission": 0.045,
+    "create_fee_vdt": 100}.items()), L)
+check("limits: старые ключи для текущего UI", L.get("transfer_min") == 150 and L.get("payout_min") == 275
+      and L.get("payout_fee") == 0.135 and L.get("payout_fee_ton") == 0.115 and L.get("transfer_fee") == 0.10, L)
+check("rates.stars_to_vld = 1", R.get("stars_to_vld") == 1, R)
+
+# ---------- TON-депозит: 2.5 TON -> 2500 милли-VDT, VLD не трогает, одна транзакция — один раз
+setbal("vlt3_alice", vld=0, vdt=0)
+tx_hash = "t3-" + secrets.token_hex(8)
+with app.app_context():
+    dep = TonDeposit(user_id=uid_of("vlt3_alice"), comment="vl" + secrets.token_hex(6), created_at=datetime.utcnow())
+    db.session.add(dep); db.session.commit()
+    comment, dep_id = dep.comment, dep.id
+fake_chain = {"result": [{"transaction_id": {"hash": tx_hash}, "in_msg": {
+    "source": "UQsender", "value": str(2_500_000_000), "message": comment}}]}
+
+
+class _Resp(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+_urlopen, _wallet, _every = vloody.urllib.request.urlopen, vloody.TON_WALLET, vloody.TON_SCAN_EVERY
+vloody.urllib.request.urlopen = lambda *a, **k: _Resp(json.dumps(fake_chain).encode())
+vloody.TON_WALLET, vloody.TON_SCAN_EVERY = "UQ" + "T" * 46, 0
+try:
+    with app.app_context():
+        n1 = vloody.scan_ton_deposits(force=True)
+        n2 = vloody.scan_ton_deposits(force=True)
+finally:
+    vloody.urllib.request.urlopen, vloody.TON_WALLET, vloody.TON_SCAN_EVERY = _urlopen, _wallet, _every
+check("TON 2.5 -> 2500 милли-VDT и 0 VLD", bals("vlt3_alice") == (0, 2500), bals("vlt3_alice"))
+check("та же транзакция при повторной сверке не зачислена", n1 == 1 and n2 == 0, (n1, n2))
+with app.app_context():
+    rows = LedgerTx.query.filter_by(user_id=uid_of("vlt3_alice"), kind="deposit").all()
+    d = db.session.get(TonDeposit, dep_id)
+    check("проводка депозита: VDT, ref ton:<hash>", [(x.currency, x.amount, x.ref) for x in rows]
+          == [("VDT", 2500, f"ton:{tx_hash}")], [(x.currency, x.amount, x.ref) for x in rows])
+    check("TonDeposit.vld хранит зачисленные милли-VDT", d.status == "credited" and d.vld == 2500, (d.status, d.vld))
+    try:                             # прямой повтор зачисления той же транзакции упирается в уникальный ref
+        vloody._credit_ton(TonDeposit(user_id=uid_of("vlt3_alice"), comment="vl" + secrets.token_hex(6)),
+                           2_500_000_000, tx_hash)
+        db.session.commit(); dup = False
+    except Exception:
+        db.session.rollback(); dup = True
+    check("повторное зачисление того же хеша невозможно", bals("vlt3_alice") == (0, 2500), bals("vlt3_alice"))
+
+# ---------- Stars: 100 XTR -> 100 VLD
+charge = "t3-charge-" + secrets.token_hex(6)
+upd = {"message": {"from": {"id": IDS["vlt3_alice"]}, "successful_payment": {
+    "currency": "XTR", "total_amount": 100, "telegram_payment_charge_id": charge}}}
+with app.app_context():
+    r1 = vloody.handle_payment_update(upd)
+    r2 = vloody.handle_payment_update(upd)
+check("100 Stars -> 100 VLD, VDT не тронут", r1.get("amount") == 100 and bals("vlt3_alice") == (100, 2500), (r1, bals("vlt3_alice")))
+check("повтор платежа не зачислен", r2.get("status") == "duplicate" and bals("vlt3_alice") == (100, 2500))
+
+# ---------- транзакции различают валюту
+items = get("vlt3_alice", "/api/transactions").get_json()["items"]
+check("transactions: поле currency", {x.get("currency") for x in items} == {"VLD", "VDT"}, items[:2])
+
+# ---------- вывод
+TON_DEST = "UQ" + "C" * 46
+setbal("vlt3_alice", vld=1000, vdt=0)
+r = post("vlt3_alice", "/api/payout", {"currency": "VDT", "amount": 2500, "destination": TON_DEST})
+check("вывод VDT при одном VLD -> 400", r.status_code == 400 and bals("vlt3_alice") == (1000, 0), (r.status_code, r.get_json()))
+r = post("vlt3_alice", "/api/payout", {"currency": "BTC", "amount": 500, "destination": "@alice"})
+check("неизвестная валюта вывода -> 400", r.status_code == 400, r.status_code)
+r = post("vlt3_alice", "/api/payout", {"currency": "VLD", "amount": 274, "destination": "@alice"})
+check("вывод 274 VLD -> 400", r.status_code == 400, r.status_code)
+r = post("vlt3_alice", "/api/payout", {"currency": "VLD", "amount": 275, "destination": "@alice"})
+q = (r.get_json() or {}).get("request") or {}
+check("вывод 275 VLD -> к выплате 238", r.status_code == 200 and q.get("net") == 238 and q.get("commission") == 37
+      and q.get("currency") == "VLD" and q.get("method") == "STARS" and bals("vlt3_alice") == (725, 0), (r.status_code, q))
+r = post("vlt3_alice", "/api/payout", {"method": "STARS", "amount": 300, "destination": "@alice"})
+q_legacy = (r.get_json() or {}).get("request") or {}
+check("legacy method=STARS -> VLD", r.status_code == 200 and q_legacy.get("currency") == "VLD" and bals("vlt3_alice") == (425, 0))
+c.post(f"/api/admin/payouts/{q.get('id', 0)}", headers=ADMIN, json={"action": "paid"})
+with app.app_context():
+    pr = db.session.get(PayoutRequest, q.get("id", 0))
+    fee_ref = vloody.payout_ref(pr, "fee") if pr and hasattr(vloody, "payout_ref") else "missing"
+plat_refs.append(fee_ref)
+check("выплата VLD: комиссия 37 VLD платформе, баланс не тронут",
+      plat_row(fee_ref) == ("commission", "VLD", 37) and bals("vlt3_alice") == (425, 0), plat_row(fee_ref))
+
+setbal("vlt3_alice", vdt=5000)
+r = post("vlt3_alice", "/api/payout", {"currency": "VDT", "amount": 2499, "destination": TON_DEST})
+check("вывод 2499 милли-VDT -> 400", r.status_code == 400, r.status_code)
+r = post("vlt3_alice", "/api/payout", {"currency": "VDT", "amount": 2500, "destination": "@alice"})
+check("вывод VDT на не-TON адрес -> 400", r.status_code == 400, r.status_code)
+r = post("vlt3_alice", "/api/payout", {"currency": "VDT", "amount": 2500, "destination": TON_DEST})
+qv = (r.get_json() or {}).get("request") or {}
+with app.app_context():
+    prv = db.session.get(PayoutRequest, qv.get("id") or 0)
+    nn = prv.net_nano if prv else None
+check("вывод 2500 милли-VDT -> к выплате 2213, net_nano = 2213·10⁶",
+      r.status_code == 200 and qv.get("net") == 2213 and qv.get("commission") == 287 and nn == 2213 * 10**6
+      and qv.get("currency") == "VDT" and qv.get("method") == "TON" and bals("vlt3_alice") == (425, 2500), (r.status_code, qv, nn))
+c.post(f"/api/admin/payouts/{qv.get('id', 0)}", headers=ADMIN, json={"action": "reject"})
+check("отклонение VDT-вывода возвращает VDT", bals("vlt3_alice") == (425, 5000), bals("vlt3_alice"))
+r = post("vlt3_alice", "/api/payout", {"method": "TON", "amount": 2500, "destination": TON_DEST})
+ql = (r.get_json() or {}).get("request") or {}
+check("legacy method=TON -> VDT", r.status_code == 200 and ql.get("currency") == "VDT" and bals("vlt3_alice") == (425, 2500), ql)
+vloody.DEMO_MODE, _demo = True, vloody.DEMO_MODE
+try:
+    r = post("vlt3_alice", "/api/payout", {"currency": "VLD", "amount": 300, "destination": "@alice"})
+finally:
+    vloody.DEMO_MODE = _demo
+check("демо-режим: вывод 403", r.status_code == 403, r.status_code)
+
+# ---------- поиск по username
+r = get("vlt3_alice", "/api/users/lookup?username=@VLT3_Bob")
+j = r.get_json() or {}
+check("lookup @VLT3_Bob -> bob", r.status_code == 200 and j.get("telegram_id") == IDS["vlt3_bob"]
+      and j.get("username") == "vlt3_bob" and set(j) == {"telegram_id", "name", "username", "photo"}, j)
+check("lookup без @ тоже работает", get("vlt3_alice", "/api/users/lookup?username=vlt3_bob").status_code == 200)
+check("lookup неизвестного -> 404", get("vlt3_alice", "/api/users/lookup?username=vlt3_nobody_x").status_code == 404)
+for bad in ("", "@", "ab", "bad-name!", "x" * 33):
+    rr = get("vlt3_alice", "/api/users/lookup?username=" + bad)
+    check(f"lookup '{bad[:10]}' -> 400", rr.status_code == 400, rr.status_code)
+with app.app_context():
+    User.query.filter_by(telegram_id=IDS["vlt3_ban"]).first().is_banned = True
+    db.session.commit()
+check("lookup заблокированного -> 404", get("vlt3_alice", "/api/users/lookup?username=vlt3_ban").status_code == 404)
+check("lookup по telegram_id (запасной)", get("vlt3_alice", f"/api/users/lookup?telegram_id={IDS['vlt3_bob']}").get_json()
+      .get("telegram_id") == IDS["vlt3_bob"])
+
+# ---------- перевод по username
+setbal("vlt3_alice", vld=1000, vdt=5000)
+setbal("vlt3_bob", vld=0, vdt=0)
+r = post("vlt3_alice", "/api/transfer", {"to_username": "@VLT3_BOB", "amount": 149, "currency": "VLD"})
+check("перевод 149 VLD -> 400", r.status_code == 400, r.status_code)
+r = post("vlt3_alice", "/api/transfer", {"to_username": "@VLT3_BOB", "amount": 150, "currency": "VLD"})
+check("перевод 150 VLD @VLT3_BOB: −150 / +135", r.status_code == 200 and bals("vlt3_alice") == (850, 5000)
+      and bals("vlt3_bob") == (135, 0), (r.status_code, r.get_json(), bals("vlt3_alice"), bals("vlt3_bob")))
+with app.app_context():
+    out = LedgerTx.query.filter_by(user_id=uid_of("vlt3_alice"), kind="transfer_out").order_by(LedgerTx.id.desc()).first()
+    base = out.ref.rsplit(":", 1)[0] if out and out.ref else ""
+plat_refs.append(base + ":fee")
+check("комиссия перевода 15 VLD платформе", plat_row(base + ":fee") == ("commission", "VLD", 15), plat_row(base + ":fee"))
+r = post("vlt3_alice", "/api/transfer", {"to_username": "vlt3_bob", "amount": 1499, "currency": "VDT"})
+check("перевод 1499 милли-VDT -> 400", r.status_code == 400, r.status_code)
+r = post("vlt3_alice", "/api/transfer", {"to_username": "Vlt3_Bob", "amount": 1500, "currency": "VDT"})
+check("VDT-перевод двигает только VDT", r.status_code == 200 and bals("vlt3_alice") == (850, 3500)
+      and bals("vlt3_bob") == (135, 1350), (bals("vlt3_alice"), bals("vlt3_bob")))
+with app.app_context():
+    out = LedgerTx.query.filter_by(user_id=uid_of("vlt3_alice"), kind="transfer_out").order_by(LedgerTx.id.desc()).first()
+    inn = LedgerTx.query.filter_by(user_id=uid_of("vlt3_bob"), kind="transfer_in").order_by(LedgerTx.id.desc()).first()
+    base = out.ref.rsplit(":", 1)[0] if out and out.ref else ""
+    check("проводки перевода в VDT", out is not None and inn is not None and out.currency == "VDT" and inn.currency == "VDT" and inn.amount == 1350)
+plat_refs.append(base + ":fee")
+check("комиссия VDT-перевода 150 милли-VDT платформе", plat_row(base + ":fee") == ("commission", "VDT", 150), plat_row(base + ":fee"))
+r = post("vlt3_alice", "/api/transfer", {"to_username": "vlt3_bob", "amount": 5000, "currency": "VDT"})
+check("недостаточно VDT -> 400", r.status_code == 400 and (r.get_json() or {}).get("error") == "Недостаточно VDT", r.get_json())
+r = post("vlt3_alice", "/api/transfer", {"to_username": "vlt3_bob", "amount": 5000, "currency": "VLD"})
+check("недостаточно VLD -> 400", r.status_code == 400 and (r.get_json() or {}).get("error") == "Недостаточно VLD", r.get_json())
+r = post("vlt3_alice", "/api/transfer", {"to_username": "@vlt3_alice", "amount": 200, "currency": "VLD"})
+check("перевод себе -> 400", r.status_code == 400, r.status_code)
+r = post("vlt3_alice", "/api/transfer", {"to_username": "vlt3_nobody_x", "amount": 200, "currency": "VLD"})
+check("перевод неизвестному -> 404", r.status_code == 404, r.status_code)
+r = post("vlt3_alice", "/api/transfer", {"to_username": "vlt3_ban", "amount": 200, "currency": "VLD"})
+check("перевод заблокированному -> 404", r.status_code == 404, r.status_code)
+r = post("vlt3_alice", "/api/transfer", {"to_username": "vlt3_bob", "amount": 200, "currency": "TON"})
+check("перевод в неизвестной валюте -> 400", r.status_code == 400, r.status_code)
+r = post("vlt3_alice", "/api/transfer", {"to_telegram_id": IDS["vlt3_bob"], "amount": 200})
+with app.app_context():
+    out = LedgerTx.query.filter_by(user_id=uid_of("vlt3_alice"), kind="transfer_out").order_by(LedgerTx.id.desc()).first()
+    plat_refs.append(out.ref.rsplit(":", 1)[0] + ":fee" if out and out.ref else "")
+check("legacy to_telegram_id без currency -> VLD", r.status_code == 200 and bals("vlt3_alice") == (650, 3500)
+      and bals("vlt3_bob") == (315, 1350), (bals("vlt3_alice"), bals("vlt3_bob")))
+
+# ---------- демо-бонус: 1000 VLD + NFT + 1 VDT, один раз; старым игрокам — только 1 VDT, один раз
+vloody.DEMO_MODE = True
+try:
+    with app.app_context():
+        nu = User.query.filter_by(telegram_id=IDS["vlt3_new"]).first()
+        nu.stars_balance, nu.vdt_balance, nu.welcome_bonus = 0, 0, 0
+        ou = User.query.filter_by(telegram_id=IDS["vlt3_old"]).first()
+        ou.stars_balance, ou.vdt_balance, ou.welcome_bonus = 1000, 0, 1
+        db.session.commit()
+        g1 = vloody.grant_welcome(nu)
+        g2 = vloody.grant_welcome(nu)
+        o1 = vloody.grant_welcome(ou)
+        o2 = vloody.grant_welcome(ou)
+finally:
+    vloody.DEMO_MODE = _demo
+with app.app_context():
+    n_gifts = GiftItem.query.filter_by(owner_id=uid_of("vlt3_new")).count()
+    o_gifts = GiftItem.query.filter_by(owner_id=uid_of("vlt3_old")).count()
+    vdt_bonus = LedgerTx.query.filter_by(user_id=uid_of("vlt3_new"), kind="bonus", currency="VDT").all()
+check("новый игрок: 1000 VLD + 1000 милли-VDT + NFT", g1 and bals("vlt3_new") == (1000, 1000) and n_gifts == 1
+      and [x.amount for x in vdt_bonus] == [1000], (bals("vlt3_new"), n_gifts))
+check("повторно бонус не выдаётся", g2 is False and bals("vlt3_new") == (1000, 1000))
+check("старый игрок получил только 1 VDT", o1 and bals("vlt3_old") == (1000, 1000) and o_gifts == 0, (bals("vlt3_old"), o_gifts))
+check("старому игроку — тоже один раз", o2 is False and bals("vlt3_old") == (1000, 1000))
+
+# ---------- уборка
+with app.app_context():
+    users = User.query.filter(User.telegram_id.in_([IDS[k] for k in T3])).all()
+    uids = [x.id for x in users]
+    LedgerTx.query.filter(LedgerTx.user_id == None, LedgerTx.ref.in_([x for x in plat_refs if x])).delete(  # noqa: E711
+        synchronize_session=False)
+    for model in (TonDeposit, PayoutRequest, GiftItem):
+        col = model.owner_id if model is GiftItem else model.user_id
+        model.query.filter(col.in_(uids)).delete(synchronize_session=False)
+    LedgerTx.query.filter(LedgerTx.user_id.in_(uids)).delete(synchronize_session=False)
+    User.query.filter(User.id.in_(uids)).delete(synchronize_session=False)
+    db.session.commit()
+
 print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)

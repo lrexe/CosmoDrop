@@ -194,7 +194,8 @@ b_c = bal("cat")
 r = post("cat", "/api/payout", {"amount": 50, "destination": "@cat"})
 check("вывод ниже минимума -> отказ", r.status_code == 400, r.status_code)
 r1 = post("cat", "/api/payout", {"amount": 500, "destination": "@cat"}).get_json()
-check("заявка: списано 500, к выплате 400", bal("cat") == b_c - 500 and r1["request"]["net"] == 400, r1)
+check("заявка: списано 500, комиссия 13.5% (67), к выплате 433", bal("cat") == b_c - 500 and r1["request"]["net"] == 433
+      and r1["request"]["commission"] == 67 and r1["request"]["currency"] == "VLD", r1)
 r = c.post(f"/api/admin/payouts/{r1['request']['id']}", json={"action": "paid"})
 check("обработка вывода без секрета админа -> 403", r.status_code == 403, r.status_code)
 c.post(f"/api/admin/payouts/{r1['request']['id']}", headers=ADMIN, json={"action": "reject"})
@@ -212,7 +213,7 @@ with app.app_context():
         LedgerTx.user_id == None, LedgerTx.currency == "VLD").scalar() - rev0   # noqa: E711
     org = next(u for u in users if u.telegram_id == IDS["org"])
     check("за 4 раунда списано 4 × 0.1 VDT, VLD сбор не тронул", org.vdt_balance == 1000 - 4 * 100, org.vdt_balance)
-    paid_out = 400                                       # ушло игроку наружу по заявке r2
+    paid_out = 433                                       # ушло игроку наружу по заявке r2
     total = balances + rev + paid_out
     check("деньги сходятся: балансы + доход платформы + выплаты = внесённому",
           total == START * len(IDS), (balances, rev, paid_out, total))

@@ -117,8 +117,8 @@ lst = aget("payouts?status=pending").get_json()["items"]
 check("заявка в списке ожидающих с данными игрока", any(x["id"] == q["id"] and x["telegram_id"] == P2 for x in lst))
 apost(f"payouts/{q['id']}", {"action": "paid"})
 s2 = aget("stats").get_json()
-check("после выплаты комиссия вывода попала в доход",
-      s2["revenue"]["by_source"]["payouts"] - s["revenue"]["by_source"]["payouts"] == 100, s2["revenue"])
+check("после выплаты комиссия вывода 13.5% (67 из 500) попала в доход",
+      s2["revenue"]["by_source"]["payouts"] - s["revenue"]["by_source"]["payouts"] == 67, s2["revenue"])
 check("выплаченная заявка ушла из ожидающих", all(x["id"] != q["id"] for x in aget("payouts").get_json()["items"]))
 check("и видна в выплаченных", any(x["id"] == q["id"] for x in aget("payouts?status=paid").get_json()["items"]))
 
@@ -138,9 +138,10 @@ with app.app_context():
     PoolEntry.query.filter(PoolEntry.pool_id.in_(pids)).delete(synchronize_session=False)
     Pool.query.filter(Pool.id.in_(pids)).delete(synchronize_session=False)
     GiftItem.query.filter(GiftItem.owner_id.in_(uids)).delete(synchronize_session=False)
+    fee_ref = V.payout_ref(db.session.get(PayoutRequest, q["id"]), "fee")
     PayoutRequest.query.filter(PayoutRequest.user_id.in_(uids)).delete(synchronize_session=False)
     LedgerTx.query.filter(LedgerTx.user_id.in_(uids)).delete(synchronize_session=False)
-    LedgerTx.query.filter(LedgerTx.user_id == None, LedgerTx.title == f"Комиссия вывода #{q['id']}").delete(synchronize_session=False)  # noqa: E711
+    LedgerTx.query.filter(LedgerTx.user_id == None, LedgerTx.ref == fee_ref).delete(synchronize_session=False)  # noqa: E711
     User.query.filter(User.id.in_(uids)).delete(synchronize_session=False)
     db.session.commit()
 print("ALL PASS" if ok else "SOME FAILED")
