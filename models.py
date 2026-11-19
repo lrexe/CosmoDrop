@@ -31,6 +31,7 @@ class User(db.Model):
     registered_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     stars_balance = db.Column(db.Integer, default=0)
+    welcome_bonus = db.Column(db.Integer, default=0)   # 1 — демо-бонус за вход уже выдан
     total_earned = db.Column(db.Integer, default=0)
     total_spent = db.Column(db.Integer, default=0)
     cases_opened = db.Column(db.Integer, default=0)
@@ -409,7 +410,8 @@ class TonDeposit(db.Model):
 def ensure_columns():
     """Мини-миграция: добавляет в существующие таблицы колонки, появившиеся позже."""
     added = {"gift_items": [("transfer_fee", "INTEGER DEFAULT 0"), ("slug", "VARCHAR(64)")],
-             "payout_requests": [("net_nano", "BIGINT DEFAULT 0")]}
+             "payout_requests": [("net_nano", "BIGINT DEFAULT 0")],
+             "users": [("welcome_bonus", "INTEGER DEFAULT 0")]}
     inspector = db.inspect(db.engine)
     for table, columns in added.items():
         if not inspector.has_table(table):

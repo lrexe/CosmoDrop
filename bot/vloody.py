@@ -502,9 +502,29 @@ def profile_dict(user):
     }
 
 
+WELCOME_VLD = int(os.getenv("WELCOME_VLD", "1000"))
+
+
+def grant_welcome(user):
+    """Демо-режим: каждому игроку один раз — 1000 VLD и случайный NFT-подарок (не настоящие)."""
+    if not DEMO_MODE or user.welcome_bonus:
+        return False
+    lock(user)
+    if user.welcome_bonus:                    # параллельный запрос успел раньше
+        return False
+    name, emoji, slug = secrets.choice(DEMO_GIFTS)
+    db.session.add(GiftItem(owner_id=user.id, name=f"{name} #{slug.rsplit('-', 1)[1]}", emoji=emoji,
+                            art=secrets.choice(ARTS), slug=slug, source="bonus"))
+    move(user, WELCOME_VLD, "bonus", f"Приветственный бонус · {WELCOME_VLD} VLD и {emoji} {name}")
+    user.welcome_bonus = 1
+    db.session.commit()
+    return True
+
+
 @vloody_bp.route("/api/profile", methods=["GET", "POST"])
 def profile():
     user = me()
+    grant_welcome(user)
     if not user.referral_code:
         user.referral_code = gen_referral_code(user.telegram_id)
         db.session.commit()
@@ -540,6 +560,8 @@ def gifts():
 @vloody_bp.route("/api/inventory/gifts/<int:gift_id>/withdraw", methods=["POST"])
 def gift_withdraw(gift_id):
     user = me()
+    if DEMO_MODE:
+        return err("В демо-режиме подарки нельзя вывести в Telegram — они не настоящие", 403)
     gift = GiftItem.query.filter_by(id=gift_id, owner_id=user.id).with_for_update().first()
     if not gift or gift.status != "held":
         return err("Подарок недоступен для вывода", 400)
@@ -611,6 +633,8 @@ def transfer():
 
 @vloody_bp.route("/api/payout", methods=["POST"])
 def payout_request():
+    if DEMO_MODE:
+        return err("В демо-режиме вывод отключён: VLD и подарки не настоящие", 403)
     user = lock(me())
     data = request.get_json(silent=True) or {}
     method = data.get("method", "STARS")
