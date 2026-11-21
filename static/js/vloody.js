@@ -1634,7 +1634,7 @@
       try {
         const u = await api("/api/users/lookup?username=" + encodeURIComponent(name.replace(/^@/, "")));
         if ($("tr-recipient").value.trim() !== name) return;
-        if (state.profile && u.telegram_id === state.profile.telegram_id) {
+        if (u.is_me) {
           st.textContent = "Это ты — перевести самому себе нельзя"; st.classList.add("err");
         } else {
           // превью: фото (или первая буква) + имя + @username; имя вставляется как текст
@@ -1652,11 +1652,17 @@
     if (!recipient || isNaN(amount)) return;
     const btn = $("tr-submit-btn"); btn.disabled = true;
     try {
-      const r = await api("/api/transfer", { to_username: $("tr-recipient").value.trim().replace(/^@/, ""), amount, currency: trCur });
+      // ключ получателя из предпросмотра: если имя за это время ушло к другому игроку, сервер ответит 409
+      const r = await api("/api/transfer", { to_username: recipient.username || $("tr-recipient").value.trim().replace(/^@/, ""),
+        recipient_token: recipient.recipient_token, amount, currency: trCur });
       setBalances(r.balances); closeOv("transfer-modal"); haptic("ok");
       toast(`Переведено: получатель зачислит ${fmtCur(r.received, r.currency)}`);
       if (state.pt === "tx" && $("sc-profile").classList.contains("on")) loadTx();
-    } catch (e) { toast(e.message); haptic("error"); transferCalc(); }
+    } catch (e) {
+      toast(e.message); haptic("error");
+      if (e.message === "Получатель изменился — проверь ещё раз") transferLookup();   // показать, кто теперь под этим именем
+      else transferCalc();
+    }
   }
 
   // ---------------------------------------------------------------- вывод

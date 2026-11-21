@@ -31,7 +31,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import event
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
@@ -1059,24 +1059,28 @@ def _int_arg(raw):
     return int(raw)
 
 
+RECIPIENT_CHANGED = "Получатель изменился — проверь ещё раз"
+
+
+def recipient_token(u):
+    """Непрозрачный ключ получателя из предпросмотра: HMAC(SECRET_KEY, id и имя). Не раскрывает telegram_id."""
+    key = str(current_app.config.get("SECRET_KEY") or "").encode()
+    msg = f"recipient:{u.id}:{(u.username or '').lower()}".encode()
+    return hmac.new(key, msg, hashlib.sha256).hexdigest()[:32]
+
+
 @vloody_bp.route("/api/users/lookup", methods=["GET"])
 def user_lookup():
-    if "username" in request.args or "telegram_id" not in request.args:
-        u, problem = find_by_username(request.args.get("username"))
-        if problem == "bad":
-            return err("Укажи @username: латиница, цифры и _, от 3 до 32 символов", 400)
-        if problem == "ambiguous":
-            return err(AMBIGUOUS_USERNAME, 409)
-    else:                                     # запасной способ — по Telegram ID
-        try:
-            tid = int(request.args.get("telegram_id", ""))
-        except ValueError:
-            return err("Неверный Telegram ID", 400)
-        u = User.query.filter_by(telegram_id=tid).first()
+    """Предпросмотр получателя перевода — только по @username и только публичные поля (имя, фото)."""
+    u, problem = find_by_username(request.args.get("username"))
+    if problem == "bad":
+        return err("Укажи @username: латиница, цифры и _, от 3 до 32 символов", 400)
+    if problem == "ambiguous":
+        return err(AMBIGUOUS_USERNAME, 409)
     if not u or u.is_banned:
         return err("Пользователь не найден", 404)
-    return jsonify({"telegram_id": u.telegram_id, "name": u.first_name or display_name(u),
-                    "username": u.username, "photo": u.photo})
+    return jsonify({"name": u.first_name or display_name(u), "username": u.username, "photo": u.photo,
+                    "is_me": u.id == me().id, "recipient_token": recipient_token(u)})
 
 
 @vloody_bp.route("/api/transfer", methods=["POST"])
@@ -1090,23 +1094,23 @@ def transfer():
         amount = _int_arg(data.get("amount"))
     except (TypeError, ValueError):
         return err("Проверь получателя и сумму", 400)
-    if data.get("to_username") not in (None, ""):
-        target, problem = find_by_username(data.get("to_username"))
-        if problem == "bad":
-            return err("Проверь @username получателя", 400)
-        if problem == "ambiguous":
-            return err(AMBIGUOUS_USERNAME, 409)
-    else:                                     # старый клиент: по Telegram ID
-        try:
-            target = User.query.filter_by(telegram_id=_int_arg(data.get("to_telegram_id"))).first()
-        except (TypeError, ValueError):
-            return err("Проверь получателя и сумму", 400)
+    if data.get("to_username") in (None, ""):
+        return err("Проверь получателя и сумму", 400)
+    target, problem = find_by_username(data.get("to_username"))
+    if problem == "bad":
+        return err("Проверь @username получателя", 400)
+    if problem == "ambiguous":
+        return err(AMBIGUOUS_USERNAME, 409)
     if amount < TRANSFER_MIN[cur]:
         return err(f"Минимальная сумма перевода — {fmt_cur(TRANSFER_MIN[cur], cur)}", 400)
     if not target or target.is_banned:
         return err("Пользователь не найден", 404)
     if target.id == user.id:
         return err("Нельзя перевести самому себе", 400)
+    token = data.get("recipient_token")
+    # имя могло перейти к другому игроку между предпросмотром и нажатием — перевод необратим, не угадываем
+    if token is not None and not hmac.compare_digest(str(token), recipient_token(target)):
+        return err(RECIPIENT_CHANGED, 409)
 
     # блокируем в порядке id, чтобы встречные переводы не зависли
     for u in sorted((user, target), key=lambda x: x.id):

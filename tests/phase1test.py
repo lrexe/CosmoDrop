@@ -467,8 +467,11 @@ check("демо-режим: вывод 403", r.status_code == 403, r.status_code
 # ---------- поиск по username
 r = get("vlt3_alice", "/api/users/lookup?username=@VLT3_Bob")
 j = r.get_json() or {}
-check("lookup @VLT3_Bob -> bob", r.status_code == 200 and j.get("telegram_id") == IDS["vlt3_bob"]
-      and j.get("username") == "vlt3_bob" and set(j) == {"telegram_id", "name", "username", "photo"}, j)
+check("lookup @VLT3_Bob -> bob, только публичные поля", r.status_code == 200 and j.get("username") == "vlt3_bob"
+      and set(j) == {"name", "username", "photo", "is_me", "recipient_token"} and j.get("is_me") is False, j)
+check("lookup не раскрывает telegram_id", str(IDS["vlt3_bob"]) not in r.get_data(as_text=True), r.get_data(as_text=True))
+bob_token = j.get("recipient_token")
+check("lookup себя -> is_me", get("vlt3_alice", "/api/users/lookup?username=vlt3_alice").get_json().get("is_me") is True)
 check("lookup без @ тоже работает", get("vlt3_alice", "/api/users/lookup?username=vlt3_bob").status_code == 200)
 check("lookup неизвестного -> 404", get("vlt3_alice", "/api/users/lookup?username=vlt3_nobody_x").status_code == 404)
 for bad in ("", "@", "ab", "bad-name!", "x" * 33):
@@ -478,8 +481,9 @@ with app.app_context():
     User.query.filter_by(telegram_id=IDS["vlt3_ban"]).first().is_banned = True
     db.session.commit()
 check("lookup заблокированного -> 404", get("vlt3_alice", "/api/users/lookup?username=vlt3_ban").status_code == 404)
-check("lookup по telegram_id (запасной)", get("vlt3_alice", f"/api/users/lookup?telegram_id={IDS['vlt3_bob']}").get_json()
-      .get("telegram_id") == IDS["vlt3_bob"])
+r = get("vlt3_alice", f"/api/users/lookup?telegram_id={IDS['vlt3_bob']}")
+check("lookup по telegram_id больше не работает (нельзя перебирать id)", r.status_code == 400
+      and "vlt3_bob" not in r.get_data(as_text=True), (r.status_code, r.get_json()))
 
 # ---------- перевод по username
 setbal("vlt3_alice", vld=1000, vdt=5000)
@@ -519,11 +523,22 @@ check("перевод заблокированному -> 404", r.status_code ==
 r = post("vlt3_alice", "/api/transfer", {"to_username": "vlt3_bob", "amount": 200, "currency": "TON"})
 check("перевод в неизвестной валюте -> 400", r.status_code == 400, r.status_code)
 r = post("vlt3_alice", "/api/transfer", {"to_telegram_id": IDS["vlt3_bob"], "amount": 200})
+check("перевод по telegram_id больше не принимается", r.status_code == 400 and bals("vlt3_alice") == (850, 3500)
+      and bals("vlt3_bob") == (135, 1350), (r.status_code, bals("vlt3_alice"), bals("vlt3_bob")))
+
+# ---------- получатель из предпросмотра: если имя ушло к другому — 409, деньги не двигаются
+r = post("vlt3_alice", "/api/transfer", {"to_username": "vlt3_bob", "amount": 200, "recipient_token": bob_token})
 with app.app_context():
     out = LedgerTx.query.filter_by(user_id=uid_of("vlt3_alice"), kind="transfer_out").order_by(LedgerTx.id.desc()).first()
     plat_refs.append(out.ref.rsplit(":", 1)[0] + ":fee" if out and out.ref else "")
-check("legacy to_telegram_id без currency -> VLD", r.status_code == 200 and bals("vlt3_alice") == (650, 3500)
-      and bals("vlt3_bob") == (315, 1350), (bals("vlt3_alice"), bals("vlt3_bob")))
+check("перевод с recipient_token из предпросмотра -> 200 (без currency — VLD)", r.status_code == 200
+      and bals("vlt3_alice") == (650, 3500) and bals("vlt3_bob") == (315, 1350), (r.status_code, r.get_json()))
+r = post("vlt3_alice", "/api/transfer", {"to_username": "vlt3_dup", "amount": 200, "recipient_token": bob_token})
+check("имя теперь у другого игрока -> 409 «Получатель изменился»", r.status_code == 409
+      and (r.get_json() or {}).get("error") == "Получатель изменился — проверь ещё раз"
+      and bals("vlt3_alice") == (650, 3500), (r.status_code, r.get_json()))
+r = post("vlt3_alice", "/api/transfer", {"to_username": "vlt3_bob", "amount": 200, "recipient_token": "forged"})
+check("поддельный recipient_token -> 409", r.status_code == 409 and bals("vlt3_alice") == (650, 3500), r.status_code)
 
 # ---------- неоднозначный @username: не угадываем, а устаревшая запись чистится при входе владельца
 with app.app_context():
@@ -544,7 +559,7 @@ with app.app_context():
     stale_name = User.query.filter_by(telegram_id=IDS["vlt3_stale"]).first().username
 check("вход владельца снял имя с устаревшей записи", stale_name is None, stale_name)
 r = get("vlt3_alice", "/api/users/lookup?username=@VLT3_DUP")
-check("после этого lookup находит владельца", r.status_code == 200 and r.get_json()["telegram_id"] == IDS["vlt3_dup"], r.get_json())
+check("после этого lookup находит владельца", r.status_code == 200 and r.get_json()["username"] == "vlt3_dup", r.get_json())
 
 # ---------- демо-бонус: 1000 VLD + NFT + 1 VDT, один раз; старым игрокам — только 1 VDT, один раз
 vloody.DEMO_MODE = True
@@ -575,6 +590,9 @@ check("старому игроку — тоже один раз", o2 is False an
 with app.app_context():
     users = User.query.filter(User.telegram_id.in_([IDS[k] for k in T3])).all()
     uids = [x.id for x in users]
+    # комиссия каждого перевода этих игроков — даже если проверка выше упала и ref не попал в plat_refs
+    plat_refs += [o.ref.rsplit(":", 1)[0] + ":fee" for o in LedgerTx.query.filter(
+        LedgerTx.user_id.in_(uids), LedgerTx.kind == "transfer_out").all() if o.ref]
     LedgerTx.query.filter(LedgerTx.user_id == None, LedgerTx.ref.in_([x for x in plat_refs if x])).delete(  # noqa: E711
         synchronize_session=False)
     for model in (TonDeposit, PayoutRequest, GiftItem):

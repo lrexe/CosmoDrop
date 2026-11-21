@@ -88,10 +88,10 @@ r = apost(f"users/{P1}", {"action": "ban"}).get_json()
 check("игрок заблокирован", r["banned"] is True)
 pool2 = c.post("/api/pools", headers=O, json={"mode": "wheel", "gift_id": g["id"], "min_stake": 5, "duration_min": 60}).get_json()
 codes = [c.post(f"/api/pools/{pool2['id']}/stake", headers=A, json={"amount": 50}).status_code,
-         c.post("/api/transfer", headers=A, json={"to_telegram_id": P2, "amount": 200}).status_code,
+         c.post("/api/transfer", headers=A, json={"to_username": "adm_p2", "amount": 200}).status_code,
          c.post("/api/payout", headers=A, json={"amount": 200, "destination": "@xyz", "method": "STARS"}).status_code]
 check("заблокированный не может ставить, переводить и выводить", codes == [403, 403, 403] and bal(A) == 1000, codes)
-r = c.post("/api/transfer", headers=B, json={"to_telegram_id": P1, "amount": 200})
+r = c.post("/api/transfer", headers=B, json={"to_username": "adm_p1", "amount": 200})
 check("заблокированному нельзя перевести", r.status_code == 404 and bal(B) == 1000, r.status_code)
 apost(f"users/{P1}", {"action": "unban"})
 r = c.post(f"/api/pools/{pool2['id']}/stake", headers=A, json={"amount": 50})
