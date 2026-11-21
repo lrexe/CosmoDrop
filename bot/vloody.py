@@ -33,7 +33,7 @@ from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, jsonify, request
 from sqlalchemy import event
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from models import db, User, GiftItem, Pool, PoolEntry, LedgerTx, PayoutRequest, TonDeposit, Channel
@@ -112,10 +112,50 @@ def display_name(u):
 
 
 def lock(user):
-    """Блокирует строку пользователя на время денежной операции (PostgreSQL)."""
+    """Блокирует строку пользователя (PostgreSQL) — единый порядок блокировок против взаимоблокировок.
+
+    На SQLite это обычное чтение: корректность денег держится не на нём, а на атомарных
+    условных UPDATE в _move и claim().
+    """
     db.session.flush()            # иначе refresh затрёт ещё не записанные изменения этой же строки
     db.session.refresh(user, with_for_update=True)
     return user
+
+
+class Refused(ValueError):
+    """Операция отклонена условием в БД (баланс, статус). Транзакция откатывается целиком."""
+
+    def __init__(self, message, code=400):
+        super().__init__(message)
+        self.code = code
+
+
+@vloody_bp.errorhandler(Refused)
+def _refused(e):
+    db.session.rollback()
+    return err(str(e), e.code)
+
+
+@vloody_bp.errorhandler(OperationalError)
+def _db_busy(e):
+    # SQLite: другой запрос держит запись дольше busy timeout — честный отказ вместо 500
+    db.session.rollback()
+    log.warning("database busy: %s", e)
+    return err("Сервер занят — попробуй ещё раз через пару секунд", 503)
+
+
+def claim(obj, frm, to):
+    """Атомарно переводит строку из статуса frm в to. True — только у запроса, который успел первым.
+
+    Условный UPDATE берёт блокировку записи в любой БД (в SQLite — на всю базу до commit),
+    поэтому параллельный запрос дождётся первого и увидит уже новый статус (0 строк).
+    """
+    model = type(obj)
+    db.session.flush()
+    res = db.session.execute(db.update(model).where(model.id == obj.id, model.status == frm)
+                             .values(status=to).execution_options(synchronize_session=False))
+    db.session.expire(obj, ["status"])
+    return res.rowcount == 1
 
 
 CURRENCIES = ("VLD", "VDT")
@@ -123,9 +163,17 @@ CURRENCIES = ("VLD", "VDT")
 
 def _move(user, amount, kind, title, ref, cur, field, label):
     if user is not None:
-        if (getattr(user, field) or 0) + amount < 0:
-            raise ValueError(f"Недостаточно {label}")
-        setattr(user, field, (getattr(user, field) or 0) + amount)
+        # атомарно: «прибавить, если не уйдёт в минус» — проверка и запись одним UPDATE,
+        # иначе два параллельных списания всего баланса оба прошли бы проверку
+        db.session.flush()        # id новой строки и её уже накопленные изменения — до UPDATE
+        col = getattr(User, field)
+        res = db.session.execute(
+            db.update(User).where(User.id == user.id, db.func.coalesce(col, 0) + amount >= 0)
+            .values({field: db.func.coalesce(col, 0) + amount})
+            .execution_options(synchronize_session=False))
+        if res.rowcount != 1:
+            raise Refused(f"Недостаточно {label}")
+        db.session.expire(user, [field])       # следующее чтение возьмёт значение из БД, а не старое
     db.session.add(LedgerTx(user_id=user.id if user else None, kind=kind, amount=amount,
                             currency=cur, title=title[:120], ref=ref))
 
@@ -259,14 +307,16 @@ def _refund_all(pool, reason):
     """Возвращает каждую ставку ровно в той сумме и валюте, в какой она была сделана."""
     refund = mover(pool.currency)
     refunded = 0
-    for e in PoolEntry.query.filter_by(pool_id=pool.id).order_by(PoolEntry.id).all():
+    # в порядке id игрока — тот же порядок блокировок, что у переводов (PostgreSQL)
+    for e in PoolEntry.query.filter_by(pool_id=pool.id).order_by(PoolEntry.user_id, PoolEntry.id).all():
         staker = db.session.get(User, e.user_id)
         if staker is None:
             # строки игрока нет: вернуть некому. Не блокируем отмену (и все запросы, где она идёт)
             log.error("pool %s: staker %s missing, refund %s skipped", pool.id, e.user_id, e.amount)
             continue
         lock(staker)
-        refund(staker, e.amount, "refund", f"Возврат ставки · раунд #{pool.id} отменён")
+        refund(staker, e.amount, "refund", f"Возврат ставки · раунд #{pool.id} отменён",
+               ref=pool_ref(pool, f"refund:{e.id}"))       # второй возврат той же ставки физически не запишется
         if pool.currency == "VLD":
             staker.total_spent = max(0, (staker.total_spent or 0) - e.amount)
         refunded += e.amount
@@ -283,8 +333,10 @@ def deadline(pool):
 def settle(pool):
     """Подводит итог раунда, у которого вышло время. Повторный вызов ничего не делает."""
     db.session.flush()
-    db.session.refresh(pool, with_for_update=True)     # статус — под блокировкой строки
+    db.session.refresh(pool, with_for_update=True)     # статус — под блокировкой строки (PostgreSQL)
     if pool.status != "live" or deadline(pool) > now():
+        return
+    if not claim(pool, "live", "settling"):            # параллельный запрос уже подводит итог
         return
     entries = PoolEntry.query.filter_by(pool_id=pool.id).order_by(PoolEntry.id).all()
     if pool.mode == "vault":
@@ -433,7 +485,7 @@ def post_pool_to_channel(pool):
 def post_pool_result(pool):
     """Итог раунда в канале: победитель и банк или отмена с возвратом ставок."""
     ch = _channel_for(pool)
-    if not ch or pool.status == "live":
+    if not ch or pool.status not in ("finished", "cancelled"):
         return False
     gift, cur = pool.gift, pool.currency or "VLD"
     head = f"Раунд #{pool.id} · {gift.emoji} {gift.name}"
@@ -487,7 +539,7 @@ def _photo(u):
 def pool_dict(pool, user, detail=False):
     cfg = json.loads(pool.cfg or "{}")
     entries = PoolEntry.query.filter_by(pool_id=pool.id).order_by(PoolEntry.id).all()
-    finished = pool.status != "live"
+    finished = pool.status in ("finished", "cancelled")      # settling — ещё не итог
     blind = pool.mode == "auction" and not finished
     uid = user.id if user else None
 
@@ -636,7 +688,9 @@ def pool_create():
     if (lock(user).vdt_balance or 0) < CREATE_FEE_VDT:
         return err("Нужно 0.1 VDT на запуск раунда — пополни баланс TON", 400)
 
-    gift.status = "locked"
+    if not claim(gift, "held", "locked"):          # параллельный запрос уже запустил раунд с этим подарком
+        db.session.rollback()
+        return err("Сначала передай подарок боту-хранителю — раунд создаётся только из инвентаря", 400)
     created = now()
     pool = Pool(organizer_id=user.id, gift_id=gift.id, mode=mode, currency=currency, min_stake=min_stake,
                 # сейф живёт ровно 6 часов, колесо и аукцион — выбранное время (не больше 6 часов)
@@ -706,6 +760,12 @@ def pool_cancel(pool_id):
         return err("Раунд уже завершён", 400)
     if PoolEntry.query.filter_by(pool_id=pool.id).count():
         return err("В раунде уже есть ставки — отменить нельзя", 400)
+    if not claim(pool, "live", "settling"):
+        db.session.rollback()
+        return err("Раунд уже завершён", 400)
+    if PoolEntry.query.filter_by(pool_id=pool.id).count():     # ставка успела до захвата
+        db.session.rollback()
+        return err("В раунде уже есть ставки — отменить нельзя", 400)
     _cancel(pool, "organizer")                  # сбор за запуск не возвращается
     db.session.commit()
     return jsonify({"cancelled": True})
@@ -729,10 +789,17 @@ def _stake_guard(pool_id, mode):
 def _place(user, pool, amount, kind, number=None):
     """Ставка всегда в валюте раунда: валюта из тела запроса не читается вовсе."""
     title = f"{pool.gift.emoji} {pool.gift.name} · раунд #{pool.id}"
+    # раунд должен быть живым в момент записи: параллельный расчёт мог закрыть его после проверки
+    db.session.flush()
+    res = db.session.execute(db.update(Pool).where(Pool.id == pool.id, Pool.status == "live")
+                             .values(bank=db.func.coalesce(Pool.bank, 0) + amount)
+                             .execution_options(synchronize_session=False))
+    if res.rowcount != 1:
+        raise Refused("Раунд уже завершён")
+    db.session.expire(pool, ["bank", "status"])
     mover(pool.currency)(user, -amount, kind, title)
     db.session.add(PoolEntry(pool_id=pool.id, user_id=user.id, amount=amount,
                              number=number, created_at=now()))
-    pool.bank = (pool.bank or 0) + amount
     # опыт и статистика ставок ведутся в VLD; VDT-ставка засчитывает только активность дня
     bump_activity(user, amount if pool.currency == "VLD" else 0)
 
@@ -803,6 +870,8 @@ def vault_try(pool_id):
         db.session.flush()          # уникальный (pool_id, number): параллельная попытка с тем же числом упадёт здесь
         hit = number == cfg["secret"]
         if hit:
+            if not claim(pool, "live", "settling"):
+                raise Refused("Раунд уже завершён")
             _finish(pool, user.id, {"secret": cfg["secret"]})
         db.session.commit()
     except IntegrityError:
@@ -872,7 +941,15 @@ def grant_welcome(user):
         return False
     lock(user)
     stage = user.welcome_bonus or 0
-    if stage >= 2:                            # параллельный запрос успел раньше
+    if stage >= 2:
+        return False
+    # атомарный захват этапа: у параллельного запроса, успевшего раньше, здесь будет 0 строк
+    res = db.session.execute(db.update(User).where(User.id == user.id,
+                                                   db.func.coalesce(User.welcome_bonus, 0) == stage)
+                             .values(welcome_bonus=2).execution_options(synchronize_session=False))
+    db.session.expire(user, ["welcome_bonus"])
+    if res.rowcount != 1:
+        db.session.rollback()
         return False
     if stage < 1:
         name, emoji, slug = secrets.choice(DEMO_GIFTS)
@@ -880,7 +957,6 @@ def grant_welcome(user):
                                 art=secrets.choice(ARTS), slug=slug, source="bonus"))
         move_vld(user, WELCOME_VLD, "bonus", f"Приветственный бонус · {WELCOME_VLD} VLD и {emoji} {name}")
     move_vdt(user, WELCOME_VDT, "bonus", f"Приветственный бонус · {fmt_cur(WELCOME_VDT, 'VDT')}")
-    user.welcome_bonus = 2
     db.session.commit()
     return True
 
@@ -932,13 +1008,15 @@ def gift_withdraw(gift_id):
     if user.is_banned:
         return err("Доступ заблокирован", 403)
     fee = gift.transfer_fee or 0
+    if fee and lock(user).stars_balance < fee:
+        return err(f"Для вывода нужно {fee} VLD — столько Telegram берёт за передачу подарка", 400)
+    if not claim(gift, "held", "withdraw_requested"):     # двойное нажатие: вторая заявка не пройдёт
+        db.session.rollback()
+        return err("Подарок недоступен для вывода", 400)
     if fee:
         # Telegram берёт звёзды за передачу подарка — платит тот, кто выводит, а не платформа
-        if lock(user).stars_balance < fee:
-            return err(f"Для вывода нужно {fee} VLD — столько Telegram берёт за передачу подарка", 400)
         move(user, -fee, "gift_fee", f"Плата Telegram за передачу · {gift.emoji} {gift.name}")
         move(None, fee, "gift_fee", f"Резерв на передачу подарка #{gift.id}")
-    gift.status = "withdraw_requested"
     db.session.commit()
     return jsonify({"gift": gift.to_dict(), "fee": fee, "balance": user.stars_balance})
 
@@ -1549,9 +1627,10 @@ def relay_delivered():
     if denied:
         return denied
     gift = db.session.get(GiftItem, (request.get_json(silent=True) or {}).get("gift_id") or 0)
-    if not gift or gift.status != "withdraw_requested":
+    if not gift or gift.status != "withdraw_requested" or not claim(gift, "withdraw_requested", "withdrawn"):
+        db.session.rollback()
         return err("Gift not found", 404)
-    gift.status, gift.tg_gift_id = "withdrawn", None
+    gift.tg_gift_id = None
     db.session.commit()
     return jsonify({"status": "withdrawn"})
 
@@ -1564,9 +1643,9 @@ def relay_failed():
         return denied
     data = request.get_json(silent=True) or {}
     gift = db.session.get(GiftItem, data.get("gift_id") or 0)
-    if not gift or gift.status != "withdraw_requested":
+    if not gift or gift.status != "withdraw_requested" or not claim(gift, "withdraw_requested", "held"):
+        db.session.rollback()               # параллельный «не удалось» уже вернул плату
         return err("Gift not found", 404)
-    gift.status = "held"
     fee = gift.transfer_fee or 0
     owner = db.session.get(User, gift.owner_id)
     if fee and owner:
@@ -1620,14 +1699,15 @@ def admin_payout_process(req_id):
     if not req or req.status != "pending":
         return err("Заявка не найдена", 404)
     pay = mover(req.currency or "VLD")        # валюта заявки; деньги уже списаны при подаче
-    if action == "paid":
-        req.status = "paid"
-        pay(None, req.commission, "commission", f"Комиссия вывода #{req.id}", ref=payout_ref(req, "fee"))
-    elif action == "reject":
-        req.status = "rejected"
-        pay(lock(req.user), req.amount, "payout_refund", f"Возврат заявки #{req.id}", ref=payout_ref(req, "refund"))
-    else:
+    if action not in ("paid", "reject"):
         return err("action: paid | reject", 400)
+    if not claim(req, "pending", "paid" if action == "paid" else "rejected"):   # двойной клик
+        db.session.rollback()
+        return err("Заявка не найдена", 404)
+    if action == "paid":
+        pay(None, req.commission, "commission", f"Комиссия вывода #{req.id}", ref=payout_ref(req, "fee"))
+    else:
+        pay(lock(req.user), req.amount, "payout_refund", f"Возврат заявки #{req.id}", ref=payout_ref(req, "refund"))
     req.processed_at = now()
     db.session.commit()
     return jsonify({"request": req.to_dict(admin=True)})
@@ -1738,7 +1818,8 @@ def admin_pool_refund(pool_id):
     if denied:
         return denied
     pool = Pool.query.filter_by(id=pool_id).with_for_update().first()
-    if not pool or pool.status != "live":
+    if not pool or pool.status != "live" or not claim(pool, "live", "settling"):   # двойной клик
+        db.session.rollback()
         return err("Живой раунд не найден", 404)
     refunded = _refund_all(pool, "admin")       # в валюте раунда
     db.session.commit()

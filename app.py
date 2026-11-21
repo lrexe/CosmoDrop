@@ -59,6 +59,9 @@ def create_app():
     app.config["SECRET_KEY"] = secret_key()
     app.config["SQLALCHEMY_DATABASE_URI"] = build_database_uri()
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+    if app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite"):
+        # dev-сервер многопоточный: параллельный писатель ждёт освобождения базы, а не падает «database is locked»
+        app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {"connect_args": {"timeout": 15}}
     app.config["UPLOAD_FOLDER"] = os.path.join(BASE_DIR, "static", "files")
     app.config["JSON_AS_ASCII"] = False
     app.config["MAX_CONTENT_LENGTH"] = 64 * 1024      # тела запросов у нас крошечные
