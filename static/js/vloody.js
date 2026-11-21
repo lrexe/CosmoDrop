@@ -1252,7 +1252,8 @@
       ? "Сегодня серия продлена — возвращайся завтра"
       : "Сделай ставку сегодня, чтобы продлить серию";
     $("ref-rate").textContent = (p.referral.rate * 100) + "%";
-    $("ref-link").textContent = `https://t.me/${VL.bot}?startapp=${p.referral.code}`;
+    // ?start: бот ответит кнопкой на текущий адрес приложения (Main Mini App URL в BotFather устаревает)
+    $("ref-link").textContent = `https://t.me/${VL.bot}?start=${p.referral.code}`;
     $("ref-invited").textContent = fmt(p.referral.invited); $("ref-earned").textContent = fmt(p.referral.earned);
     const tier = (LEVELS.find(([from]) => p.level.level >= from) || LEVELS[3])[1];
     $("lvl-name").textContent = `Уровень ${p.level.level} · ${tier}`;
@@ -1741,7 +1742,7 @@
     if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, done); else done();
   }
   function sharePool(id) {
-    copyText(`https://t.me/${VL.bot}?startapp=pool_${id}`, "Ссылка на раунд скопирована!");
+    copyText(`https://t.me/${VL.bot}?start=pool_${id}`, "Ссылка на раунд скопирована!");
   }
 
   // ================================================================== таймеры

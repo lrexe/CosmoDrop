@@ -130,5 +130,9 @@ check("loadChannels can surface a channel-list error (loadChannelList(true) reth
 check("stake modal: slider amount is checked against balance too (confirm disabled when balance < min_stake)",
       re.search(r'if \(raw === ""\) return \{ amount: parseInt', vjs) is None)
 
+_js = read("static/js/vloody.js")
+check("ссылки на бота — через /start, а не startapp (Main Mini App URL устарел)", "startapp=" not in _js)
+check("init читает startapp из адреса (кнопка web_app из /start)", 'get("startapp")' in _js)
+
 print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)

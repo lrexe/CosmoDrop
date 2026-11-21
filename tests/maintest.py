@@ -111,6 +111,22 @@ check("/start: приветствие с кнопкой Mini App", m == "sendMes
 c.post("/api/telegram_payment", headers=HOOK, json=start("/start CDABC12"))
 check("/start с кодом: код передаётся в приложение",
       sent[-1][1]["reply_markup"]["inline_keyboard"][0][0]["web_app"]["url"] == "https://vloody.example.com/?startapp=CDABC12")
+check("/start с реферальным кодом — обычное приветствие",
+      "Добро пожаловать" in sent[-1][1]["text"]
+      and sent[-1][1]["reply_markup"]["inline_keyboard"][0][0]["text"] == "🎡 Открыть Vloody", sent[-1][1])
+c.post("/api/telegram_payment", headers=HOOK, json=start("/start pool_42"))
+m, p = sent[-1]
+btn = p["reply_markup"]["inline_keyboard"][0][0]
+check("/start pool_42 (кнопка из канала): ответ про раунд и кнопка «Открыть раунд»",
+      m == "sendMessage" and "Открой раунд по кнопке ниже" in p["text"] and btn["text"] == "🎯 Открыть раунд"
+      and btn["web_app"]["url"] == "https://vloody.example.com/?startapp=pool_42", p)
+os.environ["PUBLIC_URL"] = ""
+n = len(sent)
+r = c.post("/api/telegram_payment", headers=HOOK, json=start("/start pool_42"))
+os.environ["PUBLIC_URL"] = "https://vloody.example.com"
+check("без PUBLIC_URL бот не молчит: «временно недоступно», без кнопки Mini App",
+      len(sent) == n + 1 and sent[-1][0] == "sendMessage" and "временно недоступно" in sent[-1][1]["text"]
+      and "reply_markup" not in sent[-1][1], sent[n:])
 c.post("/api/telegram_payment", headers=HOOK, json=start('/start x&admin=1"><script>'))
 check("подозрительный параметр отброшен",
       sent[-1][1]["reply_markup"]["inline_keyboard"][0][0]["web_app"]["url"] == "https://vloody.example.com/")
@@ -274,7 +290,7 @@ check("раунд с каналом -> пост с картинкой подар
       r.status_code == 200 and len(posts) == 1 and m == "sendPhoto" and p["chat_id"] == CH
       and p["photo"] == "https://vloody.example.com/gift-art/plushpepe-1337.jpg"
       and btn.get("text") == "🎯 Участвовать"
-      and btn.get("url") == f"https://t.me/Cosmos67Drop_Bot?startapp=pool_{p1['id']}", (m, p))
+      and btn.get("url") == f"https://t.me/Cosmos67Drop_Bot?start=pool_{p1['id']}", (m, p))
 check("в посте: подарок, режим, валюта, ставка, срок; без разметки",
       "Plush Pepe #1337" in body and "Колесо" in body and "5 VLD" in body and "UTC" in body
       and "parse_mode" not in p, body)

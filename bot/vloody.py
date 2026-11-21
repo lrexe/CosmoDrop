@@ -471,7 +471,9 @@ def post_pool_to_channel(pool):
     bot = os.getenv("BOT_USERNAME", "").strip().lstrip("@")
     if BOT_USERNAME_RE.fullmatch(bot):
         payload["reply_markup"] = {"inline_keyboard": [[{
-            "text": "🎯 Участвовать", "url": f"https://t.me/{bot}?startapp=pool_{pool.id}"}]]}
+            # ?start, а не ?startapp: Main Mini App URL в BotFather устаревает при смене адреса туннеля,
+            # а /start отвечает кнопкой на текущий PUBLIC_URL (см. _send_welcome)
+            "text": "🎯 Участвовать", "url": f"https://t.me/{bot}?start=pool_{pool.id}"}]]}
     text = pool_post_text(pool)
     public = envfile.current("PUBLIC_URL").strip().rstrip("/")
     slug = clean_slug(pool.gift.slug)
@@ -1418,18 +1420,34 @@ BOT_LONG_DESC = ("Vloody — честные розыгрыши NFT-подарк�
                  "аукцион, результат каждого раунда можно проверить. Нажми «Открыть» или /start.")
 
 
+UNAVAILABLE_TEXT = "⏳ Vloody временно недоступно — загляни через пару минут и нажми /start ещё раз."
+POOL_TEXT = "🎯 Открой раунд по кнопке ниже — там ставки, банк и время до конца."
+
+
 def _send_welcome(chat_id, param="", first_name="", text=None):
-    """Ответ на /start, /help, /fair: кнопки открывают Mini App (с кодом друга или раундом из ссылки)."""
+    """Ответ на /start, /help, /fair: кнопки открывают Mini App (с кодом друга или раундом из ссылки).
+
+    Все ссылки на бота ведут сюда через ?start=<param>: кнопка web_app строится на текущий PUBLIC_URL,
+    а приложение читает ?startapp=<param> из адреса.
+    """
     public = envfile.current("PUBLIC_URL").strip().rstrip("/")
-    if not public:
+    if not public:                      # туннель ещё не поднят — честно говорим, а не молчим
+        try:
+            tg_api("sendMessage", {"chat_id": chat_id, "text": UNAVAILABLE_TEXT})
+        except Exception:
+            return {"status": "send_failed"}
         return {"status": "no_public_url"}
     url = public + "/"
-    if param and START_PARAM_RE.match(param):
+    ok_param = bool(param and START_PARAM_RE.match(param))
+    if ok_param:
         url += "?startapp=" + param
-    if text is None:
+    is_pool = ok_param and param.startswith("pool_") and text is None
+    if is_pool:
+        text = POOL_TEXT
+    elif text is None:
         safe = re.sub(r"[^\w .\-]", "", first_name or "", flags=re.UNICODE).strip()[:30]
         text = WELCOME_TEXT.format(name=f", {safe}" if safe else "")
-    rows = [[{"text": "🎡 Открыть Vloody", "web_app": {"url": url}}]]
+    rows = [[{"text": "🎯 Открыть раунд" if is_pool else "🎡 Открыть Vloody", "web_app": {"url": url}}]]
     relay = os.getenv("RELAY_USERNAME", "").strip().lstrip("@")
     if relay:
         rows.append([{"text": "🎁 Как внести подарок", "url": f"https://t.me/{relay}?start=help"}])
