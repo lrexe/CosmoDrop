@@ -119,6 +119,8 @@ check("победителя можно пересчитать по seed", f["res
       (ticket, done["winner"]["name"]))
 check("организатор получил 95.5% банка (комиссия 4.5%)", bal("org") == START + 955, bal("org"))
 check("реферер получил 1% ставок друга из комиссии", bal("dan") == START + 7, bal("dan"))
+ref = get("dan", "/api/profile").get_json()["referral"]
+check("профиль: реферальный доход по валютам из журнала", ref.get("earned") == {"VLD": 7, "VDT": 0}, ref)
 win_who = "bob" if exp_winner == "@bob" else "cat"
 gifts = get(win_who, "/api/inventory/gifts").get_json()["gifts"]
 check("подарок в инвентаре победителя", any(g["id"] == g1 and g["status"] == "held" and g["source"] == "win" for g in gifts))
@@ -205,6 +207,8 @@ r2 = post("cat", "/api/payout", {"amount": 500, "destination": "@cat"}).get_json
 c.post(f"/api/admin/payouts/{r2['request']['id']}", headers=ADMIN, json={"action": "paid"})
 r = c.post(f"/api/admin/payouts/{r2['request']['id']}", headers=ADMIN, json={"action": "reject"})
 check("выплаченную заявку нельзя отклонить повторно", r.status_code == 404, r.status_code)
+st = get("cat", "/api/profile").get_json()["stats"]
+check("профиль: «выведено» по валютам, отклонённая заявка не считается", st.get("withdrawn") == {"VLD": 433, "VDT": 0}, st)
 
 # ---------- сходимость: ни одна звезда не появилась из воздуха
 with app.app_context():

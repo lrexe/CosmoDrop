@@ -291,8 +291,9 @@ check("раунд с каналом -> пост с картинкой подар
       and p["photo"] == "https://vloody.example.com/gift-art/plushpepe-1337.jpg"
       and btn.get("text") == "🎯 Участвовать"
       and btn.get("url") == f"https://t.me/Cosmos67Drop_Bot?start=pool_{p1['id']}", (m, p))
-check("в посте: подарок, режим, валюта, ставка, срок; без разметки",
-      "Plush Pepe #1337" in body and "Колесо" in body and "5 VLD" in body and "UTC" in body
+check("ответ создания: posted=true, когда пост в канале ушёл", p1.get("posted") is True, p1.get("posted"))
+check("в посте: подарок, режим, валюта, ставка, срок по Москве; без разметки",
+      "Plush Pepe #1337" in body and "Колесо" in body and "5 VLD" in body and "МСК" in body and "UTC" not in body
       and "parse_mode" not in p, body)
 
 n = len(sent)
@@ -304,6 +305,7 @@ with app.app_context():
     check("Telegram недоступен -> раунд всё равно создан", r.status_code == 200
           and db.session.get(Pool, p2["id"]).status == "live", r.status_code)
 check("без картинки — обычное сообщение", any(m == "sendMessage" and q["chat_id"] == CH for m, q in sent[n:]))
+check("Telegram недоступен -> posted=false (интерфейс не скажет «опубликован»)", p2.get("posted") is False, p2.get("posted"))
 
 # ставки двух игроков в первом раунде, затем время выходит -> итог в канале
 c.post(f"/api/pools/{p1['id']}/stake", headers=OB, json={"amount": 10})

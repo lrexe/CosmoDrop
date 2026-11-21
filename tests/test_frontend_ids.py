@@ -133,6 +133,10 @@ check("stake modal: slider amount is checked against balance too (confirm disabl
 _js = read("static/js/vloody.js")
 check("ссылки на бота — через /start, а не startapp (Main Mini App URL устарел)", "startapp=" not in _js)
 check("init читает startapp из адреса (кнопка web_app из /start)", 'get("startapp")' in _js)
+check("тост создания раунда смотрит на posted, а не на channel_id", "p.posted" in _js
+      and "body.channel_id ? \"Раунд создан и опубликован в канале\"" not in _js)
+check("реферальный доход показывается в обеих валютах", "p.referral.earned.VDT" in _js
+      and "Заработано, VLD" not in vloody_html)
 
 print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)

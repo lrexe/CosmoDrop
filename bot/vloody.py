@@ -396,6 +396,7 @@ def _post_results(resp):
 
 # ------------------------------------------------------------------ публикации в каналах
 MODE_LABELS = {"wheel": "🎡 Колесо", "vault": "🔐 Сейф", "auction": "🔨 Аукцион"}
+MSK_OFFSET = timedelta(hours=3)
 CHANNEL_ERR = "Канал не найден или бот в нём не админ"
 BOT_USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{5,32}$")
 
@@ -453,7 +454,8 @@ def _tg_post(method, payload):
 def pool_post_text(pool):
     gift, cur = pool.gift, pool.currency or "VLD"
     price = "Цена попытки" if pool.mode == "vault" else "Минимальная ставка"
-    end = pool.ends_at.strftime("%H:%M UTC, %d.%m") if pool.ends_at else "—"
+    # ends_at хранится в UTC; аудитория — в России, поэтому срок по Москве (UTC+3, без перехода на летнее время)
+    end = (pool.ends_at + MSK_OFFSET).strftime("%H:%M МСК, %d.%m") if pool.ends_at else "—"
     lines = [f"🎁 Разыгрывается {gift.emoji} {gift.name}",
              f"{MODE_LABELS.get(pool.mode, pool.mode)} · валюта {cur}",
              f"{price}: {fmt_cur(pool.min_stake, cur)}",
@@ -705,11 +707,13 @@ def pool_create():
     move_vdt(None, CREATE_FEE_VDT, "create_fee", f"Сбор за запуск раунда #{pool.id}", ref=pool_ref(pool, "fee"))
     db.session.commit()
     out = pool_dict(pool, user, detail=True)
+    posted = False
     if channel:
         try:
-            post_pool_to_channel(pool)          # после commit: сбой Telegram раунд не откатит
+            posted = bool(post_pool_to_channel(pool))      # после commit: сбой Telegram раунд не откатит
         except Exception:
             log.exception("channel post failed for pool %s", pool.id)
+    out["posted"] = posted               # интерфейс не скажет «опубликован», если пост не ушёл
     return jsonify(out)
 
 
@@ -888,8 +892,13 @@ def vault_try(pool_id):
 def profile_dict(user):
     lvl = user.level or 1
     base, nxt = cum_xp(lvl), cum_xp(lvl + 1)
-    paid = db.session.query(db.func.coalesce(db.func.sum(PayoutRequest.net), 0)).filter_by(
-        user_id=user.id, status="paid").scalar()
+    # VLD и милли-VDT — разные единицы: всё денежное в профиле — по валютам, без сложения
+    cur_col = db.func.coalesce(PayoutRequest.currency, "VLD")
+    paid = dict(db.session.query(cur_col, db.func.sum(PayoutRequest.net)).filter(
+        PayoutRequest.user_id == user.id, PayoutRequest.status == "paid").group_by(cur_col).all())
+    ref_col = db.func.coalesce(LedgerTx.currency, "VLD")
+    ref_earned = dict(db.session.query(ref_col, db.func.sum(LedgerTx.amount)).filter(
+        LedgerTx.user_id == user.id, LedgerTx.kind == "referral").group_by(ref_col).all())
     return {
         "telegram_id": user.telegram_id, "name": user.first_name or "Игрок",
         "username": user.username, "avatar": user.avatar, "photo": user.photo,
@@ -899,7 +908,7 @@ def profile_dict(user):
             "nft_won": Pool.query.filter_by(winner_id=user.id, status="finished").count(),
             "participations": db.session.query(PoolEntry.pool_id).filter_by(
                 user_id=user.id).distinct().count(),
-            "withdrawn": int(paid),
+            "withdrawn": {c: int(paid.get(c) or 0) for c in CURRENCIES},
             "organized": Pool.query.filter_by(organizer_id=user.id).count(),
         },
         "streak": user.daily_streak or 0,
@@ -908,7 +917,7 @@ def profile_dict(user):
         "referral": {
             "code": user.referral_code,
             "invited": User.query.filter_by(referred_by=user.telegram_id).count(),
-            "earned": user.referral_earned or 0,
+            "earned": {c: int(ref_earned.get(c) or 0) for c in CURRENCIES},     # из журнала, в обеих валютах
             "rate": REF_RATE,
         },
         "demo": DEMO_MODE,

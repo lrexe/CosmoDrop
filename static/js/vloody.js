@@ -1210,7 +1210,9 @@
     btn.disabled = true;
     try {
       const p = await api("/api/pools", body);
-      haptic("ok"); toast(body.channel_id ? "Раунд создан и опубликован в канале" : "Раунд создан");
+      haptic("ok");
+      toast(p.posted ? "Раунд создан и опубликован в канале"
+        : body.channel_id ? "Раунд создан, но пост в канал не ушёл — поделись ссылкой на раунд" : "Раунд создан");
       state.create.gift = null;
       loadProfile(false); // списан сбор за запуск — обновим балансы
       openPool(p.id);
@@ -1246,7 +1248,7 @@
     $("pf-av").innerHTML = avHtml(p.avatar, p.photo); $("pf-name").textContent = p.name; $("pf-name").title = p.name;
     $("pf-handle").textContent = p.username ? "@" + p.username : "ID " + p.telegram_id;
     $("pf-won").textContent = fmt(p.stats.nft_won); $("pf-part").textContent = fmt(p.stats.participations);
-    $("pf-org").textContent = fmt(p.stats.organized); // «выведено» на сервере складывает VLD и милли-VDT — не показываем
+    $("pf-org").textContent = fmt(p.stats.organized); // stats.withdrawn — по валютам {VLD, VDT}; в профиле пока не выводится
     $("streak-count").textContent = fmt(p.streak);
     $("streak-info").textContent = p.streak_today
       ? "Сегодня серия продлена — возвращайся завтра"
@@ -1254,7 +1256,7 @@
     $("ref-rate").textContent = (p.referral.rate * 100) + "%";
     // ?start: бот ответит кнопкой на текущий адрес приложения (Main Mini App URL в BotFather устаревает)
     $("ref-link").textContent = `https://t.me/${VL.bot}?start=${p.referral.code}`;
-    $("ref-invited").textContent = fmt(p.referral.invited); $("ref-earned").textContent = fmt(p.referral.earned);
+    $("ref-invited").textContent = fmt(p.referral.invited); $("ref-earned").textContent = `${fmtCur(p.referral.earned.VLD || 0, "VLD")} · ${fmtCur(p.referral.earned.VDT || 0, "VDT")}`;
     const tier = (LEVELS.find(([from]) => p.level.level >= from) || LEVELS[3])[1];
     $("lvl-name").textContent = `Уровень ${p.level.level} · ${tier}`;
     $("lvl-xp").textContent = `${fmt(p.level.xp)} / ${fmt(p.level.need)} XP`;
