@@ -183,11 +183,11 @@ check("победители: прежние ключи на месте",
 
 # ---------- перевод
 b_b, b_d = bal("bob"), bal("dan")
-r = post("bob", "/api/transfer", {"to_telegram_id": IDS["dan"], "amount": 100})
+r = post("bob", "/api/transfer", {"to_username": "dan", "amount": 100})
 check("перевод ниже минимума -> отказ", r.status_code == 400, r.status_code)
-r = post("bob", "/api/transfer", {"to_telegram_id": IDS["bob"], "amount": 200})
+r = post("bob", "/api/transfer", {"to_username": "bob", "amount": 200})
 check("перевод самому себе -> отказ", r.status_code == 400, r.status_code)
-r = post("bob", "/api/transfer", {"to_telegram_id": IDS["dan"], "amount": 200})
+r = post("bob", "/api/transfer", {"to_username": "dan", "amount": 200})
 check("перевод: списано 200, получено 180", bal("bob") == b_b - 200 and bal("dan") == b_d + 180, r.get_json())
 
 # ---------- вывод
